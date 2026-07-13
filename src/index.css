@@ -1,0 +1,115 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-text font-body antialiased selection:bg-primary/30 selection:text-white overflow-x-hidden;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(249, 115, 22, 0.04) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(0, 229, 255, 0.04) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, rgba(21, 27, 35, 0.4) 0px, transparent 100%);
+    background-attachment: fixed;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-wide;
+  }
+
+  code, pre {
+    @apply font-code;
+  }
+}
+
+/* Custom Scrollbar for Industrial UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B0F14;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2B3647;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #F97316;
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: rgba(21, 27, 35, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(43, 54, 71, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+}
+
+.glass-panel-heavy {
+  background: rgba(11, 15, 20, 0.9);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(43, 54, 71, 0.8);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.8);
+}
+
+/* Animated Border Glow */
+@keyframes borderGlow {
+  0%, 100% {
+    border-color: rgba(43, 54, 71, 0.5);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    border-color: rgba(249, 115, 22, 0.4);
+    box-shadow: 0 8px 32px 0 rgba(249, 115, 22, 0.08);
+  }
+}
+
+.animated-border {
+  animation: borderGlow 6s infinite ease-in-out;
+}
+
+@keyframes borderGlowCyan {
+  0%, 100% {
+    border-color: rgba(43, 54, 71, 0.5);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    border-color: rgba(0, 229, 255, 0.4);
+    box-shadow: 0 8px 32px 0 rgba(0, 229, 255, 0.08);
+  }
+}
+
+.animated-border-cyan {
+  animation: borderGlowCyan 6s infinite ease-in-out;
+}
+
+/* Grid overlay background to simulate industrial blueprint/CAD style */
+.blueprint-grid {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(43, 54, 71, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(43, 54, 71, 0.07) 1px, transparent 1px);
+}
+
+/* Custom React Flow overrides for Dark theme compatibility */
+.react-flow__controls button {
+  background: #151B23 !important;
+  color: #A8B3C5 !important;
+  border-bottom: 1px solid #2B3647 !important;
+}
+
+.react-flow__controls button:hover {
+  background: #1E2632 !important;
+  color: #F97316 !important;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}
