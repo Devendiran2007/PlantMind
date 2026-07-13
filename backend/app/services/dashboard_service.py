@@ -117,13 +117,28 @@ class DashboardService:
                 {"time": "24:00", "load": 87, "oee": 84}
             ]
 
+            plant_status = {
+                "status": "Normal",
+                "indicator": "🟢",
+                "equipment": "P-101",
+                "risk": "Medium",
+                "root_cause": "Bearing Wear",
+                "supporting_evidence": "4 Documents",
+                "historical_incidents": "2 Similar Cases",
+                "compliance": "1 Missing SOP",
+                "recommended_action": "Replace Bearing",
+                "estimated_downtime": "2 Hours",
+                "confidence": "94%"
+            }
+
             return DashboardResponse(
                 stats=stats,
                 equipment_health=eq_responses,
                 compliance_score=compliance_score,
                 compliance_gaps=compliance_gaps,
                 recent_activities=recent_activities,
-                telemetry_history=telemetry_history
+                telemetry_history=telemetry_history,
+                plant_status=plant_status
             )
         except Exception as e:
             logger.error(f"Failed to assemble dashboard summaries: {e}")

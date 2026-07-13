@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.schemas.industrial import EquipmentResponse
 
 class StatCard(BaseModel):
@@ -16,3 +16,4 @@ class DashboardResponse(BaseModel):
     compliance_gaps: int
     recent_activities: List[Dict[str, Any]]
     telemetry_history: List[Dict[str, Any]]
+    plant_status: Optional[Dict[str, Any]] = None
