@@ -168,5 +168,19 @@ class TestPlantMindBackend(unittest.TestCase):
         check_response = self.client.get(f"/api/v1/document/{doc_id}", headers=headers)
         self.assertEqual(check_response.status_code, 404)
 
+    def test_12_copilot_query(self):
+        headers = {"Authorization": f"Bearer {self.token}"}
+        response = self.client.post(
+            "/api/v1/copilot/query",
+            headers=headers,
+            json={"query": "Boiler 3 thermal loading guidelines"}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("content", data)
+        self.assertIn("confidence", data)
+        self.assertIn("thinkingSteps", data)
+        self.assertIn("sources", data)
+
 if __name__ == "__main__":
     unittest.main()

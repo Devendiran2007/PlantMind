@@ -17,8 +17,12 @@ class Settings(BaseSettings):
     
     # CORS origins
     BACKEND_CORS_ORIGINS: List[str] = ["*"]
+    
+    # API Keys
+    GEMINI_API_KEY: str = ""
 
     class Config:
+        env_file = ".env"
         case_sensitive = True
 
 settings = Settings()
