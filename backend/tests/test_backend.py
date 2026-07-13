@@ -130,17 +130,19 @@ class TestPlantMindBackend(unittest.TestCase):
         self.assertEqual(response.json()["id"], doc_id)
 
     def test_09_graph_topology_query(self):
-        # Query DB directly to verify GraphService is running NetworkX parsing correctly
-        db = SessionLocal()
-        try:
-            graph_data = GraphService.get_topology_network(db)
-            self.assertIn("nodes", graph_data)
-            self.assertIn("edges", graph_data)
-            # Verify we have equipment nodes in graph
-            node_types = [n["type"] for n in graph_data["nodes"]]
-            self.assertIn("equipment", node_types)
-        finally:
-            db.close()
+        # Query HTTP API to verify GraphService is running NetworkX parsing correctly
+        headers = {"Authorization": f"Bearer {self.token}"}
+        response = self.client.get("/api/v1/graph", headers=headers)
+        self.assertEqual(response.status_code, 200)
+        
+        graph_data = response.json()
+        self.assertIn("nodes", graph_data)
+        self.assertIn("edges", graph_data)
+        
+        # Verify node types are properly parsed
+        node_types = [n["type"] for n in graph_data["nodes"]]
+        self.assertIn("equipment", node_types)
+        self.assertIn("engineer", node_types)
 
     def test_10_document_delete_forbidden(self):
         # Engineers are NOT allowed to delete documents.

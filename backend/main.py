@@ -18,7 +18,7 @@ from app.models.document import Document, DocumentChunk
 from app.models.industrial import Equipment, Engineer, Incident, MaintenanceRecord, ComplianceRule, ComplianceResult
 
 # Routers
-from app.api import auth, documents, uploads, dashboard, copilot
+from app.api import auth, documents, uploads, dashboard, copilot, graph
 
 # Setup logging
 logging.basicConfig(
@@ -117,6 +117,23 @@ def seed_database():
             db.bulk_save_objects(results)
             db.commit()
 
+        # 7. Maintenance Records Seeding
+        if db.query(MaintenanceRecord).count() == 0:
+            logger.info("Seeding maintenance records logs...")
+            from datetime import datetime, timezone
+            maint = [
+                MaintenanceRecord(
+                    id=1,
+                    equipment_id="EQ-B3",
+                    engineer_id="ENG-CHEN",
+                    task_description="Replaced safety valves and recalibrated temperature sensors on superheater bypass loops.",
+                    date=datetime.now(timezone.utc),
+                    status="completed"
+                )
+            ]
+            db.bulk_save_objects(maint)
+            db.commit()
+
         logger.info("Database seeding completed successfully.")
     except Exception as err:
         logger.error(f"Seeding error encountered: {err}")
@@ -162,6 +179,7 @@ app.include_router(documents.router, prefix=settings.API_V1_STR, tags=["Document
 app.include_router(uploads.router, prefix=settings.API_V1_STR, tags=["Uploads"])
 app.include_router(dashboard.router, prefix=settings.API_V1_STR, tags=["Dashboard"])
 app.include_router(copilot.router, prefix=f"{settings.API_V1_STR}/copilot", tags=["Copilot"])
+app.include_router(graph.router, prefix=f"{settings.API_V1_STR}/graph", tags=["Knowledge Graph"])
 
 @app.get("/")
 def read_root():
