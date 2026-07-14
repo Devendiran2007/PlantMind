@@ -29,7 +29,7 @@ class CopilotService:
         
         try:
             # Query similarity chunks
-            from langchain_community.vectorstores import Chroma
+            from app.services.rag_service import Chroma
             embeddings = get_embeddings()
             vector_store = Chroma(
                 collection_name="plantmind_rag",
@@ -53,10 +53,39 @@ class CopilotService:
             
         # SQL Keyword fallback if vector yields nothing
         if not rag_chunks:
-            keywords = [w for w in query_text.split() if len(w) > 3]
+            cleaned_query = query_text.replace("-", " ").replace("_", " ").replace("/", " ")
+            words = cleaned_query.split()
+            stopwords = {"tell", "about", "what", "where", "when", "some", "that", "this", "they", "them", "then", "with", "from", "have", "here", "your", "only", "also"}
+            
+            keywords = []
+            for w in words:
+                w_clean = w.strip("?,.!:;()\"'")
+                if not w_clean:
+                    continue
+                w_lower = w_clean.lower()
+                if w_lower in stopwords:
+                    continue
+                if any(c.isdigit() for c in w_clean) or (w_clean.isupper() and len(w_clean) >= 2) or len(w_clean) > 3:
+                    keywords.append(w_clean)
+                    
+            if not keywords:
+                keywords = [w.strip("?,.!:;()\"'") for w in words if len(w.strip("?,.!:;()\"'")) >= 3 and w.lower() not in stopwords]
+                
             if keywords:
-                kw = keywords[0]
-                db_chunks = db.query(DocumentChunk).filter(DocumentChunk.content.like(f"%{kw}%")).limit(3).all()
+                # Query chunks that match all keywords if possible (AND)
+                query_filter = DocumentChunk.content.like(f"%{keywords[0]}%")
+                for kw in keywords[1:]:
+                    query_filter = query_filter & DocumentChunk.content.like(f"%{kw}%")
+                
+                db_chunks = db.query(DocumentChunk).filter(query_filter).limit(3).all()
+                
+                # Fallback to any keyword (OR) if no chunks match all
+                if not db_chunks:
+                    or_filter = DocumentChunk.content.like(f"%{keywords[0]}%")
+                    for kw in keywords[1:]:
+                        or_filter = or_filter | DocumentChunk.content.like(f"%{kw}%")
+                    db_chunks = db.query(DocumentChunk).filter(or_filter).limit(3).all()
+                    
                 rag_chunks = [c.content for c in db_chunks]
                 similarity_score = 0.75 if db_chunks else 0.0
                 
@@ -238,7 +267,67 @@ Boiler Unit 3 experienced a thermal load excursion on 2026-07-12, triggered by a
 2. **Long-Term**: Configure automatic interlocks in DCS for water spray cooling loops when metal temperatures exceed 520°C.
 """
             else:
-                answer = "I couldn't find supporting evidence."
+                if rag_chunks:
+                    # Heuristically parse matched document segments
+                    main_chunk = rag_chunks[0]
+                    
+                    title = "Industrial Diagnostics Log"
+                    eq_tag = "N/A"
+                    observations = ""
+                    engineering_notes = ""
+                    recommendations = ""
+                    
+                    # Extrapolate lines
+                    for line in main_chunk.split("\n"):
+                        if line.startswith("Title:"):
+                            title = line.replace("Title:", "").strip()
+                        elif line.startswith("Equipment Tag:"):
+                            eq_tag = line.replace("Equipment Tag:", "").strip()
+                            
+                    # Parse sections
+                    if "1. Technical Observations & Description" in main_chunk:
+                        parts = main_chunk.split("1. Technical Observations & Description")
+                        if len(parts) > 1:
+                            obs_part = parts[1]
+                            observations = obs_part.split("2. Engineering Notes")[0].strip()
+                    if "2. Engineering Notes & Work Instructions" in main_chunk:
+                        parts = main_chunk.split("2. Engineering Notes & Work Instructions")
+                        if len(parts) > 1:
+                            notes_part = parts[1]
+                            engineering_notes = notes_part.split("3. Analytical Parameters")[0].split("4. Corrective Actions")[0].strip()
+                    if "4. Corrective Actions & Recommendations" in main_chunk:
+                        parts = main_chunk.split("4. Corrective Actions & Recommendations")
+                        if len(parts) > 1:
+                            recommendations = parts[1].strip()
+                            
+                    # Build summary & details
+                    if not observations:
+                        observations = main_chunk[:300] + "..."
+                        
+                    summary = f"Processed document '{title}' for asset {eq_tag}: {observations[:250]}..."
+                    evidence = f"- Reference Document: {title}\n- Target Asset: {eq_tag}"
+                    if engineering_notes:
+                        evidence += f"\n- Engineering observations: {engineering_notes[:200]}..."
+                        
+                    recs = recommendations if recommendations else "Review manual guidelines and carry out general safety inspections."
+                    
+                    answer = f"""### Summary
+{summary}
+
+### Evidence
+{evidence}
+
+### Historical Similar Incidents
+- No similar incident history is recorded directly in the context of this log.
+
+### Related Documents
+- {sources[0] if sources else "System database log"}
+
+### Recommended Action
+{recs}
+"""
+                else:
+                    answer = "I couldn't find supporting evidence."
 
         # Anti-Hallucination output standardization
         if "supporting evidence" in answer.lower() or "couldn't find" in answer.lower():

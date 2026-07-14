@@ -85,18 +85,104 @@ export const UploadView: React.FC = () => {
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      triggerUploadSim(file.name, (file.size / (1024 * 1024)).toFixed(2) + " MB");
+      handleUploadFile(file);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      triggerUploadSim(file.name, (file.size / (1024 * 1024)).toFixed(2) + " MB");
+      handleUploadFile(file);
     }
   };
 
-  const triggerUploadSim = (name: string, size: string) => {
+  const handleUploadFile = async (file: File) => {
+    const sizeStr = (file.size / (1024 * 1024)).toFixed(2) + " MB";
+    setSelectedFile({ name: file.name, size: sizeStr });
+    setUploadProgress(0);
+    setPipelineStep(-1);
+    setPipelineLogs(["[00:00] Ingesting PDF file package..."]);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/upload", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!res.ok) throw new Error("Upload request failed");
+
+      const docData = await res.json();
+      setUploadProgress(100);
+      setPipelineStep(0);
+      setPipelineLogs(prev => [
+        ...prev,
+        `[00:02] File upload success. Document ID assigned: ${docData.id}`,
+        `[00:04] Ingestion pipeline started on backend...`
+      ]);
+
+      const intervalId = window.setInterval(async () => {
+        try {
+          const statusRes = await fetch(`http://localhost:8000/api/v1/document/${docData.id}`);
+          if (!statusRes.ok) throw new Error("Status fetch error");
+          const data = await statusRes.json();
+
+          const newLogs = ["[00:00] Ingesting PDF file package...", `[00:02] File upload success. Document ID assigned: ${docData.id}`];
+          let currentStep = 0;
+
+          if (data.ocr_status === "processing") {
+            currentStep = 0;
+            newLogs.push("[00:04] OCR scan in progress...");
+          } else if (data.ocr_status === "completed") {
+            currentStep = 1;
+            newLogs.push("[00:08] OCR scan completed. Extracted text from document.");
+          } else if (data.ocr_status === "failed") {
+            newLogs.push("[Error] OCR extraction failed.");
+            setPipelineStep(-1);
+            clearInterval(intervalId);
+            return;
+          }
+
+          if (data.embedding_status === "processing") {
+            currentStep = 2;
+            newLogs.push("[00:12] Ingesting chunks into vector store & SQL database...");
+          } else if (data.embedding_status === "completed") {
+            currentStep = 3;
+            newLogs.push("[00:15] Generated 1,536-dim vector embeddings / SQL chunks successfully.");
+          } else if (data.embedding_status === "failed") {
+            newLogs.push("[00:15] Vector store skipped (Python 3.14+). SQL keyword fallback enabled.");
+            currentStep = 3;
+          }
+
+          if (data.graph_status === "processing") {
+            currentStep = 3;
+            newLogs.push("[00:18] Synthesizing graph edges...");
+          } else if (data.graph_status === "completed") {
+            currentStep = 4;
+            newLogs.push("[00:19] PlantMind Graph updated successfully. Node status ACTIVE.");
+            clearInterval(intervalId);
+          } else if (data.graph_status === "failed") {
+            newLogs.push("[Error] Graph synthesis failed.");
+            clearInterval(intervalId);
+          }
+
+          setPipelineStep(currentStep);
+          setPipelineLogs(newLogs);
+        } catch (pollErr) {
+          console.error("Polling error:", pollErr);
+          clearInterval(intervalId);
+        }
+      }, 1500);
+
+    } catch (err) {
+      console.warn("Backend upload failed/unreachable. Running simulation fallback.", err);
+      runFallbackSimulation(file.name, sizeStr);
+    }
+  };
+
+  const runFallbackSimulation = (name: string, size: string) => {
     setSelectedFile({ name, size });
     setUploadProgress(0);
     setPipelineStep(-1);

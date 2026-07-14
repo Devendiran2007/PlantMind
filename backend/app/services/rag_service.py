@@ -104,6 +104,10 @@ class RagService:
             logger.info(f"Committed {len(chunks)} chunks to SQL db for document ID: {doc_id}")
             
             # 3. Vector Store Ingestion (ChromaDB)
+            if not LANGCHAIN_AVAILABLE:
+                logger.info(f"LangChain/Chroma is disabled on Python 3.14. SQL keyword fallback is active.")
+                return True
+
             embeddings = get_embeddings()
             vector_store = Chroma(
                 collection_name="plantmind_rag",
@@ -151,10 +155,39 @@ class RagService:
             
         # Fallback to direct SQL keyword matching if vector search yielded nothing
         if not retrieved_docs:
-            keywords = [w for w in query_text.split() if len(w) > 3]
+            cleaned_query = query_text.replace("-", " ").replace("_", " ").replace("/", " ")
+            words = cleaned_query.split()
+            stopwords = {"tell", "about", "what", "where", "when", "some", "that", "this", "they", "them", "then", "with", "from", "have", "here", "your", "only", "also"}
+            
+            keywords = []
+            for w in words:
+                w_clean = w.strip("?,.!:;()\"'")
+                if not w_clean:
+                    continue
+                w_lower = w_clean.lower()
+                if w_lower in stopwords:
+                    continue
+                if any(c.isdigit() for c in w_clean) or (w_clean.isupper() and len(w_clean) >= 2) or len(w_clean) > 3:
+                    keywords.append(w_clean)
+                    
+            if not keywords:
+                keywords = [w.strip("?,.!:;()\"'") for w in words if len(w.strip("?,.!:;()\"'")) >= 3 and w.lower() not in stopwords]
+                
             if keywords:
-                kw = keywords[0]
-                db_chunks = db.query(DocumentChunk).filter(DocumentChunk.content.like(f"%{kw}%")).limit(3).all()
+                # Query chunks that match all keywords if possible (AND)
+                query_filter = DocumentChunk.content.like(f"%{keywords[0]}%")
+                for kw in keywords[1:]:
+                    query_filter = query_filter & DocumentChunk.content.like(f"%{kw}%")
+                
+                db_chunks = db.query(DocumentChunk).filter(query_filter).limit(3).all()
+                
+                # Fallback to any keyword (OR) if no chunks match all
+                if not db_chunks:
+                    or_filter = DocumentChunk.content.like(f"%{keywords[0]}%")
+                    for kw in keywords[1:]:
+                        or_filter = or_filter | DocumentChunk.content.like(f"%{kw}%")
+                    db_chunks = db.query(DocumentChunk).filter(or_filter).limit(3).all()
+                    
                 for c in db_chunks:
                     retrieved_docs.append(LC_Doc(
                         page_content=c.content,

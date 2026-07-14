@@ -32,6 +32,8 @@ venv/
 .env
 
 # PlantMind Local DB and Storage
+plantmind.db
+vectorstore/
 backend/plantmind.db
 backend/uploads/
 backend/vectorstore/

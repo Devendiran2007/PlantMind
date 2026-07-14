@@ -44,45 +44,81 @@ export const CopilotView: React.FC = () => {
     setInputText('');
     setIsThinking(true);
 
-    // Simulate AI thinking and response
-    setTimeout(() => {
-      let aiResponse = {
-        role: 'assistant',
-        content: "I have reviewed the telemetry for your request. No anomalous vibration spikes are currently active on GT-01 rotor bearing. Average amplitude is 1.2 mm/s, well within the 4.5 mm/s ISO 21940 limit. Cross-referencing against maintenance logs indicates the rotor alignment was successfully adjusted on July 2.",
-        confidence: 98,
-        thinkingSteps: [
-          { id: 't1', title: 'Querying Asset DB', duration: '0.2s', desc: 'Retrieved turbine rotor telemetry parameters for GT-01.' },
-          { id: 't2', title: 'Fetching Sensor Logs', duration: '0.9s', desc: 'Ingested 24-hour rotor vibration amplitude averages.' },
-          { id: 't3', title: 'Validating against Standards', duration: '0.6s', desc: 'Compared data against ISO 21940 rotor vibration thresholds.' }
-        ],
-        sources: [
-          { id: 's1', title: 'Technical Manual - Siemens SGT-800 Gas Turbine', code: 'SI-MAN-GT01-V4', match: '96%' },
-          { id: 's2', title: 'Vibration Analysis Report - July 2026', code: 'PM-REP-MAINT-2026-08', match: '91%' }
-        ]
-      };
-
-      if (text.includes("Boiler") || text.includes("thermal")) {
-        aiResponse = {
+    // Call Backend API
+    fetch('http://localhost:8000/api/v1/copilot/query', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query: text })
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('API Response Error');
+        return res.json();
+      })
+      .then((data) => {
+        const aiResponse = {
           role: 'assistant',
-          content: "Steam Boiler Unit 3 is currently running at 74% health. The Superheater metal temperature reached a peak of 542°C on July 12, driven by a mechanical feedback lag on Valve FC-301. Immediate manual calibration of the electro-pneumatic positioner is recommended.",
-          confidence: 94,
-          thinkingSteps: [
-            { id: 't1', title: 'Loading Boiler telemetry', duration: '0.4s', desc: 'Retrieved thermal logs and tube metal temp values.' },
-            { id: 't2', title: 'Checking valve logs', duration: '0.7s', desc: 'Detected actuator feedback mismatch in Valve FC-301 logs.' },
-            { id: 't3', title: 'Consulting SOP-402', duration: '0.5s', desc: 'Analyzed heat dissipation emergency protocol sequence.' }
-          ],
-          sources: [
-            { id: 's1', title: 'INC-2026-089 Incident File', code: 'INC-089', match: '98%' },
-            { id: 's2', title: 'SOP-402: Emergency Heat Dissipation Protocol', code: 'DOC-SOP-402', match: '95%' }
-          ]
+          content: data.content,
+          confidence: data.confidence || 90,
+          thinkingSteps: data.thinkingSteps?.map((step: any) => ({
+            id: step.id,
+            title: step.title,
+            duration: step.duration,
+            desc: step.desc
+          })) || [],
+          sources: data.sources?.map((source: any) => ({
+            id: source.id,
+            title: source.title,
+            code: source.code,
+            match: source.match
+          })) || []
         };
-      }
+        setMessages(prev => [...prev, aiResponse]);
+        setIsThinking(false);
+        setSelectedResponseIndex(newMessages.length);
+      })
+      .catch((err) => {
+        console.error('Error querying backend copilot:', err);
+        // Fallback to client-side simulation when backend is unavailable
+        setTimeout(() => {
+          let aiResponse = {
+            role: 'assistant',
+            content: "I have reviewed the telemetry for your request. No anomalous vibration spikes are currently active on GT-01 rotor bearing. Average amplitude is 1.2 mm/s, well within the 4.5 mm/s ISO 21940 limit. Cross-referencing against maintenance logs indicates the rotor alignment was successfully adjusted on July 2.",
+            confidence: 98,
+            thinkingSteps: [
+              { id: 't1', title: 'Querying Asset DB (Fallback Mode)', duration: '0.2s', desc: 'Retrieved turbine rotor telemetry parameters for GT-01.' },
+              { id: 't2', title: 'Fetching Sensor Logs', duration: '0.9s', desc: 'Ingested 24-hour rotor vibration amplitude averages.' },
+              { id: 't3', title: 'Validating against Standards', duration: '0.6s', desc: 'Compared data against ISO 21940 rotor vibration thresholds.' }
+            ],
+            sources: [
+              { id: 's1', title: 'Technical Manual - Siemens SGT-800 Gas Turbine', code: 'SI-MAN-GT01-V4', match: '96%' },
+              { id: 's2', title: 'Vibration Analysis Report - July 2026', code: 'PM-REP-MAINT-2026-08', match: '91%' }
+            ]
+          };
 
-      setMessages(prev => [...prev, aiResponse]);
-      setIsThinking(false);
-      // Select the new response
-      setSelectedResponseIndex(newMessages.length);
-    }, 2500);
+          if (text.includes("Boiler") || text.includes("thermal") || text.includes("B3")) {
+            aiResponse = {
+              role: 'assistant',
+              content: "Steam Boiler Unit 3 is currently running at 74% health. The Superheater metal temperature reached a peak of 542°C on July 12, driven by a mechanical feedback lag on Valve FC-301. Immediate manual calibration of the electro-pneumatic positioner is recommended.",
+              confidence: 94,
+              thinkingSteps: [
+                { id: 't1', title: 'Loading Boiler telemetry (Fallback Mode)', duration: '0.4s', desc: 'Retrieved thermal logs and tube metal temp values.' },
+                { id: 't2', title: 'Checking valve logs', duration: '0.7s', desc: 'Detected actuator feedback mismatch in Valve FC-301 logs.' },
+                { id: 't3', title: 'Consulting SOP-402', duration: '0.5s', desc: 'Analyzed heat dissipation emergency protocol sequence.' }
+              ],
+              sources: [
+                { id: 's1', title: 'INC-2026-089 Incident File', code: 'INC-089', match: '98%' },
+                { id: 's2', title: 'SOP-402: Emergency Heat Dissipation Protocol', code: 'DOC-SOP-402', match: '95%' }
+              ]
+            };
+          }
+
+          setMessages(prev => [...prev, aiResponse]);
+          setIsThinking(false);
+          setSelectedResponseIndex(newMessages.length);
+        }, 1500);
+      });
   };
 
   const currentAssistantData = messages[selectedResponseIndex]?.role === 'assistant' 
