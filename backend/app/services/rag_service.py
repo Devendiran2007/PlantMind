@@ -4,9 +4,57 @@ import httpx
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document, DocumentChunk
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain_core.embeddings import Embeddings
+import sys
+LANGCHAIN_AVAILABLE = True
+
+if sys.version_info >= (3, 14):
+    print("Warning: Python 3.14+ detected. Bypassing LangChain imports to prevent startup hang.")
+    LANGCHAIN_AVAILABLE = False
+else:
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+        from langchain_community.vectorstores import Chroma
+        from langchain_core.embeddings import Embeddings
+        from langchain_core.documents import Document as LC_Doc
+    except Exception as e:
+        print(f"Warning: LangChain import failed: {e}. Activating fallback mode.")
+        LANGCHAIN_AVAILABLE = False
+
+if not LANGCHAIN_AVAILABLE:
+    class RecursiveCharacterTextSplitter:
+        def __init__(self, chunk_size=1000, chunk_overlap=200):
+            self.chunk_size = chunk_size
+            self.chunk_overlap = chunk_overlap
+
+        def split_text(self, text):
+            chunks = []
+            start = 0
+            while start < len(text):
+                end = min(start + self.chunk_size, len(text))
+                chunks.append(text[start:end])
+                start += self.chunk_size - self.chunk_overlap
+                if start >= len(text) or self.chunk_size <= self.chunk_overlap:
+                    break
+            return chunks
+
+    class Embeddings:
+        pass
+
+    class Chroma:
+        def __init__(self, *args, **kwargs):
+            pass
+        def add_texts(self, *args, **kwargs):
+            raise Exception("Chroma is disabled because LangChain/Chroma is unavailable in Python 3.14")
+        def similarity_search_with_relevance_scores(self, *args, **kwargs):
+            raise Exception("Chroma is disabled because LangChain/Chroma is unavailable in Python 3.14")
+        def similarity_search(self, *args, **kwargs):
+            raise Exception("Chroma is disabled because LangChain/Chroma is unavailable in Python 3.14")
+
+    class LC_Doc:
+        def __init__(self, page_content, metadata):
+            self.page_content = page_content
+            self.metadata = metadata
+
 
 logger = logging.getLogger(__name__)
 
@@ -108,12 +156,11 @@ class RagService:
                 kw = keywords[0]
                 db_chunks = db.query(DocumentChunk).filter(DocumentChunk.content.like(f"%{kw}%")).limit(3).all()
                 for c in db_chunks:
-                    # Construct a mock Document structure matching langchain format
-                    from langchain_core.documents import Document as LC_Doc
                     retrieved_docs.append(LC_Doc(
                         page_content=c.content,
                         metadata={"document_id": c.document_id}
                     ))
+
                 if db_chunks:
                     similarity_score = 0.75 # Default keyword match rating
                     
