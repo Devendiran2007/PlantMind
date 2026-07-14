@@ -35,3 +35,7 @@ venv/
 backend/plantmind.db
 backend/uploads/
 backend/vectorstore/
+
+# PlantMind Dataset Generator Output
+PlantMind-Dataset-Generator/output/
+

@@ -1,0 +1,29 @@
+{
+  "company_name": "SteelForge Industries Pvt Ltd",
+  "location": "Hosur, Tamil Nadu",
+  "plant_capacity": "1.2 Million Tonnes Per Year",
+  "date_range": {
+    "start": "2022-01-01",
+    "end": "2026-12-31"
+  },
+  "asset_count": 30,
+  "employee_count": 50,
+  "document_counts": {
+    "oem_manuals": 10,
+    "maintenance_reports": 40,
+    "incident_reports": 20,
+    "inspection_reports": 25,
+    "sops": 20,
+    "work_orders": 20,
+    "audit_reports": 10,
+    "compliance_reports": 10,
+    "shift_handover_logs": 20,
+    "daily_operator_logs": 20,
+    "lubrication_reports": 20,
+    "vibration_reports": 15,
+    "risk_assessments": 10,
+    "training_records": 10,
+    "calibration_reports": 10,
+    "emails": 10
+  }
+}

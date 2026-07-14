@@ -1,0 +1,177 @@
+{
+  "departments": {
+    "MECH": "Mechanical Maintenance Department",
+    "ELEC": "Electrical Maintenance Department",
+    "INC": "Instrumentation & Control Department",
+    "OPS": "Operations & Production Department",
+    "HSE": "Health, Safety & Environment Department",
+    "QAQC": "Quality Assurance & Quality Control",
+    "UTIL": "Utilities & Power Plant",
+    "PROC": "Procurement & Inventory Control"
+  },
+  "asset_classes": {
+    "P": {
+      "name": "Centrifugal Pump",
+      "specs": "Flow Rate: 450 m3/hr, Head: 65m, Fluid: Industrial Process Water, Temp: 35-45C, RPM: 1480, Power: 90kW",
+      "criticality": "High"
+    },
+    "HX": {
+      "name": "Shell and Tube Heat Exchanger",
+      "specs": "Heat Transfer Area: 120 m2, Shell Pass: Cooling Water, Tube Pass: Process Gas, Max Pressure: 12 bar, Design Temp: 150C",
+      "criticality": "Medium"
+    },
+    "V": {
+      "name": "Isolation / Control Valve",
+      "specs": "Size: DN200, Rating: Class 150, Actuator: Pneumatic Diaphragm, Input Signal: 4-20mA, Trim: Hardened SS316",
+      "criticality": "Medium"
+    },
+    "M": {
+      "name": "Drive Motor",
+      "specs": "Power: 110kW, Voltage: 415V AC, Current: 195A, Phase: 3-Phase, Enclosure: TEFC IP55, Insulation: Class F",
+      "criticality": "High"
+    },
+    "B": {
+      "name": "Water Tube Steam Boiler",
+      "specs": "Capacity: 45 Tonnes/hr, Operating Pressure: 42 kg/cm2, Operating Temp: 440C, Fuel: Blast Furnace Gas + Coal Dust",
+      "criticality": "Critical"
+    },
+    "TK": {
+      "name": "Chemical Storage Tank",
+      "specs": "Capacity: 50,000 Litres, Material: SS316L, Lining: FRP, Contained Medium: 98% Sulphuric Acid / Water Treatment Chemicals",
+      "criticality": "High"
+    },
+    "C": {
+      "name": "Rotary Screw Air Compressor",
+      "specs": "Capacity: 12.5 m3/min, Discharge Pressure: 7.5 bar, Drive Type: Direct Coupled, Motor: 75kW",
+      "criticality": "High"
+    }
+  },
+  "recurring_failures": {
+    "P-101": {
+      "tag": "P-101",
+      "name": "Cooling Water Pump A",
+      "failure_mode": "Bearing wear and seizure",
+      "fault_code": "FLT-MECH-P101-BRG",
+      "required_spare": "SKF 6312-C3 Deep Groove Ball Bearing",
+      "inspection_findings": "High radial vibration detected on motor outboard bearing. Peak velocity registered 12.4 mm/s RMS (Action level: 7.1 mm/s). Audible clicking noise during operation. Bearing housing temperature elevated to 78C.",
+      "work_description": "Schedule emergency replacement of motor drive-end and non-drive-end bearings. Clean bearing housing and apply Mobilux EP2 grease. Align pump-motor shaft using laser alignment system.",
+      "delay_reason": "Stockout of SKF 6312-C3 bearings in the central store. Lead time from vendor in Chennai is 9 days. Direct procurement request bypass was rejected by finance.",
+      "incident_description": "At 04:15 AM during shift shift change, Pump P-101 non-drive-end bearing suffered complete catastrophic seizure. This resulted in instantaneous locking of the motor rotor, high stator winding temperature, stator insulation breakdown, and trip of the primary circuit breaker. Downstream cooling water flow fell to zero, triggering emergency shut down of the Blast Furnace #1 tuyere block to prevent thermal rupture.",
+      "root_cause_5whys": [
+        "Pump P-101 tripped due to motor winding burnout and shaft lock.",
+        "Shaft lock was caused by non-drive-end bearing cage breakdown and seizure.",
+        "Bearing seizure was caused by running the bearing beyond its design lifetime despite wear indications.",
+        "Maintenance was delayed by 9 days because replacement bearing SKF 6312-C3 was out of stock in the warehouse.",
+        "Reorder trigger point was not updated in ERP system following the inventory audit, and safety stock levels were set to zero."
+      ],
+      "audit_findings": "The maintenance planning team failed to maintain availability of critical safety spares for utility assets. Central warehouse inventory levels for SKF 6312-C3 bearings were recorded as zero since the last 4 months without a replenishment order being triggered.",
+      "compliance_gap": "Non-conformance with ISO 55001 Asset Management Guidelines (Section 8.1 - Operational Planning and Control) and factories act safety standards for operating critical process machinery without functional backup systems.",
+      "corrective_actions": "1. Establish a minimum safety stock of 2 units of SKF 6312-C3 bearings in local stores. 2. Implement automated re-order level triggers in SAP. 3. Update vibration monitoring frequency of pump from monthly to bi-weekly."
+    },
+    "P-198": {
+      "tag": "P-198",
+      "name": "Cooling Water Pump B",
+      "failure_mode": "Gland packing/mechanical seal leakage",
+      "fault_code": "FLT-MECH-P198-SEAL",
+      "required_spare": "12mm Gland Seal Packing Roll (PTFE/Graphite)",
+      "inspection_findings": "Severe dripping leakage from pump gland seal housing. Leak rate estimated at 4.2 liters/minute. Gland follower tightened to maximum limit with no leakage reduction. Shaft sleeve shows minor scoring.",
+      "work_description": "Repack gland seals. Remove old packing rings, inspect shaft sleeve for wear, install 5 rings of new 12mm graphite-impregnated PTFE packing, offset joints by 90 degrees.",
+      "delay_reason": "Correct 12mm packing size was unavailable. Technician attempted to use 10mm packing with additional spacers, which failed to seal under pressure.",
+      "incident_description": "Complete blowout of the temporary gland packing occurred during peak process flow. The pump room was flooded with process water, submerging the motor base and causing an electrical ground fault trip. Pump B went out of service, halting coke oven flushing operations.",
+      "root_cause_5whys": [
+        "Coke oven flushing pump room flooded and pump B tripped.",
+        "Gland packing blew out completely under process pressure.",
+        "Temporary 10mm packing was installed instead of the standard 12mm size.",
+        "Warehouse did not have 12mm PTFE packing in stock, and technician used incorrect size to expedite the repair.",
+        "No engineering review or management of change (MOC) was filled for the material substitution."
+      ],
+      "audit_findings": "Unauthorized material substitution (10mm packing instead of 12mm) was performed by maintenance technician without engineering authorization or supervisor sign-off, violating standard maintenance protocol.",
+      "compliance_gap": "Violation of Plant Engineering Standards and ISO 9001 (Section 8.5.1 - Control of Production and Service Provision) due to lack of quality controls over maintenance modifications.",
+      "corrective_actions": "1. Mandate MOC process for any material change. 2. Conduct training for technicians on gland packing installation. 3. Audit warehouse stock for packing materials."
+    },
+    "B-401": {
+      "tag": "B-401",
+      "name": "Steam Boiler",
+      "failure_mode": "Pressure fluctuations and safety valve lift",
+      "fault_code": "FLT-ELEC-B401-INST",
+      "required_spare": "Rosemount 3051S Pressure Transmitter",
+      "inspection_findings": "Boiler drum pressure transmitter showing erratic spikes. Signal output fluctuating between 35 kg/cm2 and 48 kg/cm2. Drum pressure gauge indicates steady 41.5 kg/cm2. Control loop hunting observed.",
+      "work_description": "Calibrate drum pressure transmitter. Check transmitter loop current, check impulse line for blockage, perform three-point calibration using standard pressure calibrator.",
+      "delay_reason": "The standard deadweight tester used for calibration was out of calibration service window. Sent to external lab in Bangalore, delaying testing by 5 days.",
+      "incident_description": "Erratic pressure signal caused the automatic feed water control valve to fluctuate wildly. This led to high-high drum water level alarm, followed by an emergency automatic boiler trip. Steam supply to the turbine generator was lost, causing a partial blackout in the rolling mill sector.",
+      "root_cause_5whys": [
+        "Boiler tripped on High-High water level, causing rolling mill blackout.",
+        "Drum feed water valve opened fully due to false pressure signal drop.",
+        "Pressure transmitter Rosemount 3051S signal was hunting and gave false low values.",
+        "Calibration of the transmitter was delayed due to the calibration calibrator tester being sent out for its annual certification.",
+        "No backup calibrated deadweight tester was available in the instrument lab."
+      ],
+      "audit_findings": "Calibration laboratory records show that 30% of standard instruments were past their calibration due dates. Backup/standby calibration standards were not maintained.",
+      "compliance_gap": "Indian Boiler Regulations (IBR) non-compliance regarding testing and maintenance of critical steam drum instrumentation controls and interlocks.",
+      "corrective_actions": "1. Set up a calibration scheduling software warning. 2. Purchase a second certified pressure calibrator as a master unit. 3. Replace the faulty Rosemount 3051S transmitter."
+    },
+    "HX-301": {
+      "tag": "HX-301",
+      "name": "Heat Exchanger",
+      "failure_mode": "Tube-side fouling and thermal loss",
+      "fault_code": "FLT-MECH-HX301-FOUL",
+      "required_spare": "Neoprene Tube Cleaning Scraper Plugs (20mm)",
+      "inspection_findings": "Outlet temperature of process water is 52C (Design maximum: 42C). Differential pressure across tube side is 2.8 bar (Normal: 0.8 bar). Thermal efficiency reduced by 22% due to scaling and fouling.",
+      "work_description": "Shutdown heat exchanger, isolate and drain. Open channel covers. Perform high-pressure hydro-jetting of the tubes at 800 bar. Clean shell side, replace gaskets and pressure test.",
+      "delay_reason": "Production department refused to grant a maintenance shutdown window due to high production targets for steel billets this quarter.",
+      "incident_description": "Downstream process fluid temperature exceeded safety limit of 60C, triggering automatic safety interlock trip on the acid pickling tank. Operations were suspended for 18 hours. Internal inspection revealed thick calcium carbonate scaling blocking 40% of the tube bundle.",
+      "root_cause_5whys": [
+        "Acid pickling tank shut down due to high inlet chemical temperature.",
+        "Heat exchanger HX-301 failed to cool the process water below 42C.",
+        "Tube bundle was severely scaled, reducing heat transfer coefficient by 40%.",
+        "Hydro-jet cleaning was delayed for 3 weeks after detection of fouling.",
+        "Production department overrode maintenance schedule requests to maximize short-term output, violating the preventive maintenance agreement."
+      ],
+      "audit_findings": "Inter-departmental dispute resolution protocol for scheduled preventive maintenance shutdowns was missing. Operations regularly override maintenance alerts without formal safety risk assessments.",
+      "compliance_gap": "Violation of ISO 45001 Process Safety Management guidelines concerning operating process equipment outside safe operating limits.",
+      "corrective_actions": "1. Establish a formal SLA between Operations and Maintenance. 2. Automate differential pressure alerts in SCADA. 3. Install online descaling chemical injection system."
+    },
+    "C-701": {
+      "tag": "C-701",
+      "name": "Air Compressor",
+      "failure_mode": "Oil contamination and filter failure",
+      "fault_code": "FLT-MECH-C701-FILT",
+      "required_spare": "Atlas Copco Air/Oil Separator Element",
+      "inspection_findings": "High oil carryover in the instrument air line. Oil separator differential pressure high (1.4 bar). Discharge air temperature is high (98C). Oil level in compressor sump is dropping rapidly.",
+      "work_description": "Replace air/oil separator element and oil filter. Flush compressor system, refill with approved synthetic compressor oil (Roto-Inject Fluid). Inspect internal bypass valve.",
+      "delay_reason": "Maintenance technician did not verify that the separator bypass valve was closed and sealed after installing the new filter, due to lack of a detailed SOP checklist.",
+      "incident_description": "Oil carried over from compressor C-701 completely fouled the downstream air dryer desiccant bed and entered the main instrument air header. Pneumatic control valves in the gas mixing station clogged with oil-sludge, leading to valve sticking and subsequent loss of combustion control on the reheat furnace.",
+      "root_cause_5whys": [
+        "Reheat furnace shutdown due to air-gas ratio control failure.",
+        "Pneumatic control valves failed to respond to signals due to internal oil contamination.",
+        "Oil carryover from C-701 entered the main instrument air line.",
+        "The new air/oil separator was bypassed because the bypass valve was left open during replacement.",
+        "No formal verification check or commissioning SOP was utilized post-maintenance."
+      ],
+      "audit_findings": "Maintenance checklists for rotary equipment commissioning do not include post-assembly valve alignment checks. Technicians are not trained on specific compressor bypass mechanisms.",
+      "compliance_gap": "ISO 9001 quality compliance gap. Failure to verify and document equipment fitness-for-service before hand-back to operations.",
+      "corrective_actions": "1. Revise compressor maintenance SOP to include pre-start valve checklist. 2. Replace air dryer desiccant and inline oil coalescing filters. 3. Retrain technicians on air-oil separation systems."
+    },
+    "V-203": {
+      "tag": "V-203",
+      "name": "Isolation Valve",
+      "failure_mode": "Seat erosion and bypass leakage",
+      "fault_code": "FLT-MECH-V203-SEAT",
+      "required_spare": "Stellite-faced Valve Seat Ring (DN200)",
+      "inspection_findings": "Ultrasonic leak detection confirms internal fluid bypass of 15 m3/hr when valve is fully closed. Valve actuator is fully retracted. Cavitation noise heard in downstream pipeline.",
+      "work_description": "Disassemble valve, inspect seat and plug. Machine plug and replace seat ring with Stellite-faced seat to prevent erosion from abrasive slurry. Reassemble and test.",
+      "delay_reason": "The procurement team delayed order placement by 4 weeks because they were negotiating a 5% discount with an unapproved local vendor, bypassing the OEM supplier.",
+      "incident_description": "During a scheduled maintenance flush of the chemical pickling line, Valve V-203 failed to isolate the acid stream. High-concentration hydrochloric acid bypassed the isolation point and spilled into the neutralizer pit, causing acid fumes to spread in the bay and injuring a technician.",
+      "root_cause_5whys": [
+        "Technician exposed to acid fumes and minor skin burn in neutralizer bay.",
+        "Acid bypassed the isolation valve V-203 during the flush.",
+        "Valve seat was severely eroded, allowing bypass flow.",
+        "Valve replacement parts procurement was delayed by 4 weeks.",
+        "Procurement department prioritized vendor cost negotiation over critical safety maintenance requirements."
+      ],
+      "audit_findings": "Procurement guidelines violate safety policy by allowing arbitrary delays on purchasing 'Safety Critical Elements' (SCE) for price negotiations.",
+      "compliance_gap": "Severe violation of OSHA 1910.119 (Process Safety Management of Highly Hazardous Chemicals) and local environmental safety regulations due to failure of isolation system.",
+      "corrective_actions": "1. Classify V-203 as a Safety Critical Element (SCE) with fast-track procurement. 2. Implement Lock-Out Tag-Out (LOTO) verification procedures including physical blinds. 3. Conduct incident investigation training."
+    }
+  }
+}
