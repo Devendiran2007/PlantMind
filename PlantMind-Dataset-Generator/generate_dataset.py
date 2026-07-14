@@ -2,7 +2,7 @@ import os
 import json
 import time
 from pathlib import Path
-from generators.scenario_manager import ScenarioManager
+from generators.plant_simulator import PlantSimulator
 from generators.register_generator import RegisterGenerator
 from generators.image_generator import EquipmentImageGenerator
 from generators.document_generators import (
@@ -54,9 +54,10 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     create_output_directories(output_dir)
     
-    # Initialize Scenario Manager
-    print("[1/5] Initializing Scenario Manager and generating metadata...")
-    manager = ScenarioManager(config_path, templates_path)
+    # Initialize Plant Simulator
+    print("[1/5] Initializing Plant Simulator and running simulation...")
+    manager = PlantSimulator(config_path, templates_path)
+
     
     # Generate all assets, employees and documents metadata
     dataset = manager.generate_all_documents()
@@ -123,6 +124,26 @@ def main():
         else:
             print(f"    [Warning] No generator found for type: {doc_type}")
             
+    # Save the generated metadata graph as JSON
+    print("\n[6/5] Writing metadata graph JSON file...")
+    from datetime import datetime
+    serialized_docs = []
+    for doc in documents:
+        d_copy = doc.copy()
+        if isinstance(d_copy["date"], datetime):
+            d_copy["date"] = d_copy["date"].strftime("%Y-%m-%d")
+        serialized_docs.append(d_copy)
+        
+    graph_data = {
+        "assets": assets,
+        "employees": employees,
+        "documents": serialized_docs
+    }
+    
+    with open(output_dir / "metadata_graph.json", "w") as f:
+        json.dump(graph_data, f, indent=2)
+    print(" -> Metadata graph saved to output/metadata_graph.json.")
+    
     end_time = time.time()
     elapsed = end_time - start_time
     
@@ -134,6 +155,7 @@ def main():
     print(f"Failed documents: {failure_count}")
     print(f"Output files saved inside: {output_dir.resolve()}")
     print("====================================================")
+
 
 if __name__ == "__main__":
     main()
