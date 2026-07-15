@@ -6,7 +6,7 @@ from app.models.base import Base
 class Document(Base):
     __tablename__ = "documents"
     
-    id = Column(String, primary_key=True, index=True) # UUID-based unique ID
+    id = Column(String(255), primary_key=True, index=True) # UUID-based unique ID
     filename = Column(String, nullable=False)
     type = Column(String, nullable=False) # PDF, DOCX, XLSX, TXT, PNG, JPG
     size = Column(Integer, nullable=False) # File size in bytes
@@ -28,7 +28,7 @@ class DocumentChunk(Base):
     __tablename__ = "document_chunks"
     
     id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    document_id = Column(String(255), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     content = Column(Text, nullable=False)
     page_num = Column(Integer, nullable=False)
     chunk_index = Column(Integer, nullable=False)

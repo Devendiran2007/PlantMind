@@ -13,6 +13,7 @@ from app.models.base import Base
 from app.models.document import Document, DocumentChunk
 from app.models.industrial import Equipment, Engineer, Incident, MaintenanceRecord, ComplianceRule, ComplianceResult
 from app.services.rag_service import RecursiveCharacterTextSplitter, LC_Doc
+from app.services.document_intelligence import DocumentIntelligenceEngine
 
 def main():
     print("====================================================")
@@ -36,7 +37,59 @@ def main():
     employees = graph["employees"]
     documents = graph["documents"]
     
-    print(f"Loaded {len(assets)} assets, {len(employees)} employees, and {len(documents)} documents.")
+    # Filter dataset for clean prototype visualization
+    ALLOWED_ASSETS = ["P-101", "B-401", "HX-301"]
+    
+    # Filter assets
+    assets = [a for a in assets if a["tag"] in ALLOWED_ASSETS]
+    
+    # Filter documents to at most 4 per allowed asset tag (1 OEM, 1 SOP, 1 Incident, 1 Maintenance)
+    filtered_docs = []
+    doc_types_per_asset = {}
+    for doc in documents:
+        tag = doc.get("equipment_tag")
+        if tag not in ALLOWED_ASSETS:
+            continue
+            
+        doc_type = doc.get("type")
+        simplified_type = None
+        if doc_type in ("OEM_Manual", "Equipment"):
+            simplified_type = "OEM"
+        elif doc_type == "SOP":
+            simplified_type = "SOP"
+        elif doc_type == "Incident":
+            simplified_type = "Incident"
+        elif doc_type in ("Maintenance", "Lubrication", "WorkOrder"):
+            simplified_type = "Maintenance"
+            
+        if not simplified_type:
+            continue
+            
+        if tag not in doc_types_per_asset:
+            doc_types_per_asset[tag] = {}
+            
+        if simplified_type not in doc_types_per_asset[tag]:
+            filtered_docs.append(doc)
+            doc_types_per_asset[tag][simplified_type] = True
+            
+    documents = filtered_docs
+    
+    # Filter employees mentioned in selected documents to avoid dangling engineers
+    allowed_emp_ids = set()
+    for doc in documents:
+        if doc.get("prepared_by_id"):
+            allowed_emp_ids.add(doc["prepared_by_id"])
+        if doc.get("reviewed_by_id"):
+            allowed_emp_ids.add(doc["reviewed_by_id"])
+        if doc.get("approved_by_id"):
+            allowed_emp_ids.add(doc["approved_by_id"])
+            
+    employees = [emp for emp in employees if emp["emp_id"] in allowed_emp_ids]
+    if len(employees) < 3:
+        # Fallback to keep at least 3 engineers if empty
+        employees = graph["employees"][:3]
+    
+    print(f"Filtered prototype dataset: {len(assets)} assets, {len(employees)} employees, and {len(documents)} documents.")
     
     # Establish DB session
     db = SessionLocal()
@@ -212,6 +265,7 @@ Risk Level: {doc['risk_level']}
                 graph_status="completed",
                 file_path=str(pdf_dest.relative_to(backend_dir)),
                 entities={
+                    **DocumentIntelligenceEngine._extract_entities(doc_text),
                     "equipment_tag": doc["equipment_tag"],
                     "prepared_by": doc["prepared_by"],
                     "risk_level": doc["risk_level"],

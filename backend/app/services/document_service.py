@@ -44,7 +44,7 @@ class DocumentService:
             import chromadb
             if CHROMA_AVAILABLE:
                 chroma_client = chromadb.PersistentClient(path=settings.VECTOR_DB_DIR)
-                collection = chroma_client.get_or_create_collection(name="plantmind_kb")
+                collection = chroma_client.get_or_create_collection(name="plantmind_rag")
                 collection.delete(where={"document_id": doc_id})
                 logger.info(f"Deleted vector chunks matching metadata 'document_id' = {doc_id}")
         except Exception as chroma_ex:

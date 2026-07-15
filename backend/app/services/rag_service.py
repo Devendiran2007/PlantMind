@@ -59,7 +59,7 @@ if not LANGCHAIN_AVAILABLE:
 logger = logging.getLogger(__name__)
 
 # Expose flag for document deletion service
-CHROMA_AVAILABLE = True
+CHROMA_AVAILABLE = LANGCHAIN_AVAILABLE
 
 # Reusable mock embeddings to bypass API key requirements in test runs and keep unit tests fast
 class MockEmbeddings(Embeddings):
@@ -69,8 +69,8 @@ class MockEmbeddings(Embeddings):
         return [0.0] * 1536
 
 def get_embeddings():
-    # If in testing mode or no key is provided, use mock embeddings
-    if os.getenv("TESTING") == "True" or not settings.OPENAI_API_KEY:
+    # If in testing mode, no key is provided, or LangChain is unavailable, use mock embeddings
+    if not LANGCHAIN_AVAILABLE or os.getenv("TESTING") == "True" or not settings.OPENAI_API_KEY:
         return MockEmbeddings()
     try:
         from langchain_openai import OpenAIEmbeddings
@@ -133,25 +133,27 @@ class RagService:
         Retrieves top context matches, computes similarity score, invokes LLM, and formats grounded response.
         """
         # 1. Similarity Search via Vector Store
-        embeddings = get_embeddings()
-        vector_store = Chroma(
-            collection_name="plantmind_rag",
-            embedding_function=embeddings,
-            persist_directory=settings.VECTOR_DB_DIR
-        )
-        
         retrieved_docs = []
         similarity_score = 0.0
         
-        try:
-            # similarity_search_with_relevance_scores returns list of tuples: (Document, score)
-            results = vector_store.similarity_search_with_relevance_scores(query_text, k=3)
-            if results:
-                retrieved_docs = [r[0] for r in results]
-                # Extract score of the top match
-                similarity_score = float(results[0][1])
-        except Exception as e:
-            logger.warning(f"ChromaDB similarity search failed: {e}. Falling back to SQL keyword lookup.")
+        if LANGCHAIN_AVAILABLE:
+            try:
+                embeddings = get_embeddings()
+                vector_store = Chroma(
+                    collection_name="plantmind_rag",
+                    embedding_function=embeddings,
+                    persist_directory=settings.VECTOR_DB_DIR
+                )
+                # similarity_search_with_relevance_scores returns list of tuples: (Document, score)
+                results = vector_store.similarity_search_with_relevance_scores(query_text, k=3)
+                if results:
+                    retrieved_docs = [r[0] for r in results]
+                    # Extract score of the top match
+                    similarity_score = float(results[0][1])
+            except Exception as e:
+                logger.warning(f"ChromaDB similarity search failed: {e}. Falling back to SQL keyword lookup.")
+        else:
+            logger.info("LangChain/Chroma is disabled on Python 3.14. Bypassing vector search.")
             
         # Fallback to direct SQL keyword matching if vector search yielded nothing
         if not retrieved_docs:
@@ -174,19 +176,15 @@ class RagService:
                 keywords = [w.strip("?,.!:;()\"'") for w in words if len(w.strip("?,.!:;()\"'")) >= 3 and w.lower() not in stopwords]
                 
             if keywords:
+                from sqlalchemy import and_, or_
                 # Query chunks that match all keywords if possible (AND)
-                query_filter = DocumentChunk.content.like(f"%{keywords[0]}%")
-                for kw in keywords[1:]:
-                    query_filter = query_filter & DocumentChunk.content.like(f"%{kw}%")
-                
-                db_chunks = db.query(DocumentChunk).filter(query_filter).limit(3).all()
+                query_filters = [DocumentChunk.content.like(f"%{kw}%") for kw in keywords]
+                db_chunks = db.query(DocumentChunk).filter(and_(*query_filters)).limit(3).all()
                 
                 # Fallback to any keyword (OR) if no chunks match all
                 if not db_chunks:
-                    or_filter = DocumentChunk.content.like(f"%{keywords[0]}%")
-                    for kw in keywords[1:]:
-                        or_filter = or_filter | DocumentChunk.content.like(f"%{kw}%")
-                    db_chunks = db.query(DocumentChunk).filter(or_filter).limit(3).all()
+                    or_filters = [DocumentChunk.content.like(f"%{kw}%") for kw in keywords]
+                    db_chunks = db.query(DocumentChunk).filter(or_(*or_filters)).limit(3).all()
                     
                 for c in db_chunks:
                     retrieved_docs.append(LC_Doc(
@@ -262,9 +260,9 @@ QUERY:
                 logger.error(f"OpenAI completion call failed: {e}")
                 
         # Try Gemini fallback
-        if not answer and settings.GEMINI_API_KEY:
+        if not answer and settings.GEMINI_API_KEY and os.getenv("TESTING") != "True":
             try:
-                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
+                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"temperature": 0.0}
@@ -282,9 +280,44 @@ QUERY:
                 
         # Default mock completion if in testing mode or API error
         if not answer:
-            # If query is related to boiler block, return seeded dummy info
-            if "boiler" in query_text.lower() or "thermal" in query_text.lower():
-                answer = "Under high thermal loading in Boiler Block B, open the superheater bypass valve FC-301."
+            if retrieved_docs:
+                main_chunk = retrieved_docs[0].page_content
+                
+                title = "Industrial Diagnostics Log"
+                eq_tag = "N/A"
+                observations = "No observations noted."
+                engineering_notes = ""
+                recommendations = "Follow general safety guidelines."
+                
+                # Extrapolate lines from header if present
+                for line in main_chunk.split("\n"):
+                    if line.startswith("Title:"):
+                        title = line.replace("Title:", "").strip()
+                    elif line.startswith("Equipment Tag:"):
+                        eq_tag = line.replace("Equipment Tag:", "").strip()
+                        
+                # Parse sections
+                if "1. Technical Observations & Description" in main_chunk:
+                    parts = main_chunk.split("1. Technical Observations & Description")
+                    if len(parts) > 1:
+                        obs_part = parts[1]
+                        observations = obs_part.split("2. Engineering Notes")[0].strip()
+                if "2. Engineering Notes & Work Instructions" in main_chunk:
+                    parts = main_chunk.split("2. Engineering Notes & Work Instructions")
+                    if len(parts) > 1:
+                        notes_part = parts[1]
+                        engineering_notes = notes_part.split("3. Analytical Parameters")[0].split("4. Corrective Actions")[0].strip()
+                if "4. Corrective Actions & Recommendations" in main_chunk:
+                    parts = main_chunk.split("4. Corrective Actions & Recommendations")
+                    if len(parts) > 1:
+                        recommendations = parts[1].strip()
+                        
+                # Build a dynamic, grounded RAG response
+                answer = f"Based on document '{title}' (Asset: {eq_tag}):\n\n"
+                answer += f"**Observations:** {observations}\n\n"
+                if engineering_notes:
+                    answer += f"**Engineering Notes:** {engineering_notes}\n\n"
+                answer += f"**Corrective Actions:** {recommendations}"
             else:
                 answer = "I couldn't find supporting evidence."
 
@@ -314,7 +347,7 @@ QUERY:
         Compatibility query matcher helper.
         """
         matched_docs = []
-        if os.getenv("TESTING") == "True":
+        if not LANGCHAIN_AVAILABLE or os.getenv("TESTING") == "True":
             return matched_docs
         try:
             embeddings = get_embeddings()

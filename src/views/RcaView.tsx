@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Clock, 
   User, 
@@ -16,45 +16,114 @@ export const RcaView: React.FC<RcaViewProps> = ({
   selectedIncidentId,
   setSelectedIncidentId
 }) => {
-  // Default to INC-2026-089 if none selected
-  const activeIncidentId = selectedIncidentId || 'INC-2026-089';
-  
-  // Find current incident data
-  const incidentData = useMemo(() => {
-    return mockIncidents.find(inc => inc.id === activeIncidentId) || mockIncidents[0];
-  }, [activeIncidentId]);
-
-  const activeEquipment = useMemo(() => {
-    return mockEquipment.find(eq => eq.id === incidentData.equipmentId) || mockEquipment[0];
-  }, [incidentData]);
+  const [incidents, setIncidents] = useState<any[]>([]);
+  const [equipmentList, setEquipmentList] = useState<any[]>([]);
+  const [activeIncidentId, setActiveIncidentId] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
 
   // Handle local state for evidence overrides, so the user can interactively toggle evidence relevance
   // and see the risk score update!
   const [evidenceStates, setEvidenceStates] = useState<Record<string, 'confirmed' | 'suspect' | 'unrelated'>>({});
 
+  useEffect(() => {
+    // 1. Fetch incidents from backend
+    fetch('http://127.0.0.1:8000/api/v1/incidents')
+      .then((res) => {
+        if (!res.ok) throw new Error('API Response Error');
+        return res.json();
+      })
+      .then((data) => {
+        if (data && Array.isArray(data) && data.length > 0) {
+          setIncidents(data);
+          
+          // Select default incident: check selectedIncidentId first, then default to first item
+          if (selectedIncidentId) {
+            // Check if selectedIncidentId matches any database ID (e.g. INC-102)
+            const exists = data.some(inc => inc.id.toUpperCase() === selectedIncidentId.toUpperCase());
+            if (exists) {
+              setActiveIncidentId(selectedIncidentId);
+            } else {
+              // Try to find a partial match (e.g. if selectedIncidentId is doc_inc-102, clean it to INC-102)
+              const cleanId = selectedIncidentId.replace('doc_', '').replace('inc_', '').toUpperCase();
+              const partialExists = data.some(inc => inc.id.toUpperCase() === cleanId);
+              if (partialExists) {
+                setActiveIncidentId(cleanId);
+              } else {
+                setActiveIncidentId(data[0].id);
+              }
+            }
+          } else {
+            setActiveIncidentId(data[0].id);
+          }
+        } else {
+          setIncidents(mockIncidents);
+          setActiveIncidentId(selectedIncidentId || mockIncidents[0].id);
+        }
+      })
+      .catch((err) => {
+        console.error('Error fetching incidents from backend:', err);
+        setIncidents(mockIncidents);
+        setActiveIncidentId(selectedIncidentId || mockIncidents[0].id);
+      });
+
+    // 2. Fetch equipment from backend
+    fetch('http://127.0.0.1:8000/api/v1/incidents/equipment')
+      .then((res) => {
+        if (!res.ok) throw new Error('API Response Error');
+        return res.json();
+      })
+      .then((data) => {
+        if (data && Array.isArray(data) && data.length > 0) {
+          setEquipmentList(data);
+        } else {
+          setEquipmentList(mockEquipment);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Error fetching equipment from backend:', err);
+        setEquipmentList(mockEquipment);
+        setLoading(false);
+      });
+  }, [selectedIncidentId]);
+
+  // Find current incident data
+  const incidentData = useMemo(() => {
+    return incidents.find(inc => inc.id === activeIncidentId) || incidents[0] || mockIncidents[0];
+  }, [activeIncidentId, incidents]);
+
+  const activeEquipment = useMemo(() => {
+    if (!incidentData) return mockEquipment[0];
+    const eqId = incidentData.equipment_id || incidentData.equipmentId;
+    return equipmentList.find(eq => eq.id === eqId) || equipmentList[0] || mockEquipment[0];
+  }, [incidentData, equipmentList]);
+
   const getEvidenceStatus = (id: string) => {
-    return evidenceStates[id] || incidentData.evidence.find(ev => ev.id === id)?.status || 'unrelated';
+    if (evidenceStates[id]) return evidenceStates[id];
+    if (!incidentData || !Array.isArray(incidentData.evidence)) return 'unrelated';
+    return incidentData.evidence.find((ev: any) => ev.id === id)?.status || 'unrelated';
   };
 
   const cycleEvidenceStatus = (id: string) => {
     const current = getEvidenceStatus(id);
-    const nextStates: Record<'confirmed' | 'suspect' | 'unrelated', 'confirmed' | 'suspect' | 'unrelated'> = {
+    const nextStates: Record<string, 'confirmed' | 'suspect' | 'unrelated'> = {
       confirmed: 'suspect',
       suspect: 'unrelated',
       unrelated: 'confirmed'
     };
     setEvidenceStates(prev => ({
       ...prev,
-      [id]: nextStates[current]
+      [id]: nextStates[current] || 'confirmed'
     }));
   };
 
   // Calculate dynamic risk score based on evidence states
   const dynamicRiskScore = useMemo(() => {
-    let base = incidentData.riskScore;
+    if (!incidentData) return 50;
+    let base = incidentData.risk_score !== undefined ? incidentData.risk_score : incidentData.riskScore !== undefined ? incidentData.riskScore : 50;
     // Adjust based on user interactions
     Object.entries(evidenceStates).forEach(([id, state]) => {
-      const orig = incidentData.evidence.find(ev => ev.id === id)?.status || 'unrelated';
+      const orig = (incidentData.evidence || []).find((ev: any) => ev.id === id)?.status || 'unrelated';
       if (state !== orig) {
         if (state === 'confirmed') base += 5;
         if (state === 'unrelated') base -= 10;
@@ -72,17 +141,28 @@ export const RcaView: React.FC<RcaViewProps> = ({
   };
 
   const severityColor = (sev: string) => {
-    if (sev === 'critical' || sev === 'high') return 'text-danger bg-danger/10 border-danger/20';
-    if (sev === 'medium') return 'text-warning bg-warning/10 border-warning/20';
+    const s = (sev || '').toLowerCase();
+    if (s === 'critical' || s === 'high') return 'text-danger bg-danger/10 border-danger/20';
+    if (s === 'medium') return 'text-warning bg-warning/10 border-warning/20';
     return 'text-success bg-success/10 border-success/20';
   };
 
   const timelineStatusColor = (status: string) => {
-    if (status === 'anomaly') return 'text-danger bg-danger/10 border-danger/20';
-    if (status === 'warning') return 'text-warning bg-warning/10 border-warning/20';
-    if (status === 'action') return 'text-secondary bg-secondary/10 border-secondary/20';
+    const s = (status || '').toLowerCase();
+    if (s === 'anomaly') return 'text-danger bg-danger/10 border-danger/20';
+    if (s === 'warning') return 'text-warning bg-warning/10 border-warning/20';
+    if (s === 'action') return 'text-secondary bg-secondary/10 border-secondary/20';
     return 'text-success bg-success/10 border-success/20';
   };
+
+  if (loading && incidents.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin mb-4" />
+        <span className="text-xs text-text-muted font-mono">Loading Incident Records...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -95,11 +175,12 @@ export const RcaView: React.FC<RcaViewProps> = ({
               value={activeIncidentId}
               onChange={(e) => {
                 setSelectedIncidentId(e.target.value);
+                setActiveIncidentId(e.target.value);
                 setEvidenceStates({}); // Reset modifications
               }}
               className="bg-card-secondary border border-border/80 rounded-xl px-4 py-2 text-xs font-heading font-bold text-white focus:outline-none focus:border-primary"
             >
-              {mockIncidents.map(inc => (
+              {incidents.map((inc) => (
                 <option key={inc.id} value={inc.id} className="bg-card text-white">
                   [{inc.id}] {inc.title.slice(0, 40)}...
                 </option>
@@ -109,7 +190,7 @@ export const RcaView: React.FC<RcaViewProps> = ({
 
           <div className="flex items-center gap-3">
             <span className="text-[10px] text-text-muted font-mono uppercase bg-card px-2.5 py-1 rounded border border-border/60">
-              Target Asset: <span className="text-secondary font-bold font-sans">{activeEquipment.name} ({activeEquipment.id})</span>
+              Target Asset: <span className="text-secondary font-bold font-sans">{activeEquipment?.name || 'Unknown'} ({activeEquipment?.id || 'N/A'})</span>
             </span>
           </div>
         </div>
@@ -123,17 +204,19 @@ export const RcaView: React.FC<RcaViewProps> = ({
           {/* Incident Overview & Interactive Risk Meter */}
           <GlassCard className="border-border/40" hoverEffect={false}>
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded-full font-code text-[10px] font-bold uppercase border ${severityColor(incidentData.severity)}`}>
-                    {incidentData.severity} severity
-                  </span>
-                  <span className="text-text-muted text-[10px] font-mono">Date: {incidentData.date} ({incidentData.duration})</span>
+              {incidentData && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded-full font-code text-[10px] font-bold uppercase border ${severityColor(incidentData.severity)}`}>
+                      {incidentData.severity} severity
+                    </span>
+                    <span className="text-text-muted text-[10px] font-mono">Date: {incidentData.date} ({incidentData.duration})</span>
+                  </div>
+                  <h2 className="text-lg font-heading font-bold text-white mt-1.5 leading-snug">
+                    {incidentData.title}
+                  </h2>
                 </div>
-                <h2 className="text-lg font-heading font-bold text-white mt-1.5 leading-snug">
-                  {incidentData.title}
-                </h2>
-              </div>
+              )}
 
               {/* Risk Meter Gauge */}
               <div className={`px-5 py-3 rounded-xl border flex flex-col items-center justify-center font-code ${riskColor(dynamicRiskScore)} bg-card`}>
@@ -158,7 +241,7 @@ export const RcaView: React.FC<RcaViewProps> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {incidentData.evidence.map((ev) => {
+              {incidentData && Array.isArray(incidentData.evidence) && incidentData.evidence.map((ev: any) => {
                 const status = getEvidenceStatus(ev.id);
                 const isConfirmed = status === 'confirmed';
                 const isSuspect = status === 'suspect';
@@ -207,7 +290,7 @@ export const RcaView: React.FC<RcaViewProps> = ({
             <div className="space-y-6 relative pl-4">
               <div className="absolute top-1 bottom-1 left-7 w-[2px] bg-border/40 z-0" />
               
-              {incidentData.timeline.map((item, i) => (
+              {incidentData && Array.isArray(incidentData.timeline) && incidentData.timeline.map((item: any, i: number) => (
                 <div key={i} className="flex gap-4 text-left relative z-10">
                   <div className="flex-shrink-0 w-6 h-6 rounded-full border border-border/80 bg-card flex items-center justify-center font-code text-[9px] text-text-secondary mt-0.5 font-bold">
                     {i + 1}
@@ -236,7 +319,7 @@ export const RcaView: React.FC<RcaViewProps> = ({
           <GlassCard className="border-border/40" hoverEffect={false}>
             <h3 className="text-xs font-bold uppercase tracking-wider text-white mb-4">Recommended Mitigations</h3>
             <div className="space-y-3">
-              {incidentData.recommendations.map((rec, i) => (
+              {incidentData && Array.isArray(incidentData.recommendations) && incidentData.recommendations.map((rec: any, i: number) => (
                 <div 
                   key={i} 
                   className={`p-3 bg-card border rounded-xl space-y-2 text-xs
@@ -272,12 +355,15 @@ export const RcaView: React.FC<RcaViewProps> = ({
 
             <div className="space-y-3">
               {[
-                { id: 'INC-2025-012', title: 'Boiler 2 superheater tube burst', match: '92%', status: 'Resolved' },
-                { id: 'INC-2024-114', title: 'Refinery separator valve blockage', match: '78%', status: 'Resolved' },
-                { id: 'INC-2023-094', title: 'Turbine GT-01 over-speed trip', match: '45%', status: 'Resolved' }
+                { id: 'INC-102', title: 'Cooling Water Pump A bearing degradation', match: '95%', status: 'Resolved' },
+                { id: 'INC-105', title: 'Boiler Utilities pressure excursion warning', match: '88%', status: 'Resolved' }
               ].map((hist) => (
                 <div 
                   key={hist.id}
+                  onClick={() => {
+                    setSelectedIncidentId(hist.id);
+                    setActiveIncidentId(hist.id);
+                  }}
                   className="p-3 bg-card hover:bg-card-secondary border border-border/50 hover:border-primary/20 rounded-xl transition-all duration-200 text-left flex justify-between items-center group cursor-pointer"
                 >
                   <div>

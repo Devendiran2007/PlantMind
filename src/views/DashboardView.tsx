@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Activity, 
@@ -44,6 +44,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   setActiveTab,
   openRcaWithId
 }) => {
+  const [dashboardData, setDashboardData] = useState<any>(null);
+
+  useEffect(() => {
+    fetch('http://127.0.0.1:8000/api/v1/dashboard')
+      .then((res) => {
+        if (!res.ok) throw new Error('API Response Error');
+        return res.json();
+      })
+      .then((resData) => {
+        setDashboardData(resData);
+      })
+      .catch((err) => {
+        console.error('Error fetching dashboard from backend:', err);
+      });
+  }, []);
+
   // Stats definitions
   const statCards = [
     { label: 'Plant OEE', value: '88.4%', change: '+1.2%', trend: 'up', color: 'text-secondary' },
@@ -52,11 +68,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     { label: 'Systems Ingested', value: '14,802', change: '+24', trend: 'up', color: 'text-primary' },
   ];
 
+  const stats = dashboardData?.stats || statCards;
+  const equipment = dashboardData?.equipment_health || mockEquipment;
+  const recentActivities = dashboardData?.recent_activities || mockRecentActivities;
+  const telemetryHistory = dashboardData?.telemetry_history || performanceHistory;
+  const complianceScore = dashboardData?.compliance_score !== undefined ? dashboardData.compliance_score : mockCompliance.globalScore;
+  const complianceGaps = dashboardData?.compliance_gaps !== undefined ? dashboardData.compliance_gaps : mockCompliance.missingSOPs.length;
+  const plantStatus = dashboardData?.plant_status || {
+    status: "Normal",
+    indicator: "🟢",
+    equipment: "Refinery Column C-102",
+    risk: "Medium",
+    root_cause: "paraffin deposition",
+    recommended_action: "Recalibrate Valve FC-301",
+    estimated_downtime: "2.4 Hours",
+    confidence: "94%"
+  };
+
   return (
     <div className="space-y-6">
       {/* Top section: stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((stat, i) => (
+        {stats.map((stat: any, i: number) => (
           <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 15 }}
@@ -108,10 +141,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </span>
                   </div>
                   <h2 className="text-lg font-heading font-bold text-white">
-                    Refinery Column C-102: Thermal runaway prediction on Tray 12
+                    {plantStatus.equipment}: Predictive warning: {plantStatus.root_cause} detected
                   </h2>
                   <p className="text-xs text-text-secondary leading-relaxed">
-                    PlantMind predictive modeling detected a temperature deviation (+12.4°C/hr gradient) matching historical incident profiles of paraffin deposition. Current safety margins will deplete in <span className="text-primary font-bold">2.4 hours</span> if reflux pump loop flow rate remains at 840 m³/h.
+                    PlantMind predictive modeling detected a deviation indicating a risk of {plantStatus.root_cause}. 
+                    Estimated downtime risk: <span className="text-primary font-bold">{plantStatus.estimated_downtime || "2 Hours"}</span>. 
+                    Recommended Action: {plantStatus.recommended_action}. 
+                    Confidence Score: <span className="text-success font-bold">{plantStatus.confidence || "94%"}</span>.
                   </p>
                   
                   <div className="flex flex-wrap gap-2 pt-2">
@@ -158,7 +194,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={performanceHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={telemetryHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="oeeGlow" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#00E5FF" stopOpacity={0.2}/>
@@ -226,7 +262,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </span>
             </div>
             <div className="space-y-4 overflow-y-auto max-h-[300px] pr-2">
-              {mockRecentActivities.map((act) => {
+              {recentActivities.map((act: any) => {
                 const isIncident = act.type === 'incident';
                 const isUpload = act.type === 'upload';
                 return (
@@ -282,7 +318,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/20">
-                  {mockEquipment.slice(0, 4).map((eq) => (
+                  {equipment.slice(0, 4).map((eq: any) => (
                     <tr 
                       key={eq.id} 
                       className="hover:bg-card-secondary/30 transition-colors duration-200"
@@ -339,7 +375,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     className="absolute inset-0 rounded-full border-4 border-success border-t-transparent animate-spin" 
                     style={{ animationDuration: '4s' }}
                   />
-                  <span className="text-2xl font-bold font-heading text-white">{mockCompliance.globalScore}%</span>
+                  <span className="text-2xl font-bold font-heading text-white">{complianceScore}%</span>
                   <span className="text-[8px] text-text-muted font-mono uppercase tracking-widest">Global Safety</span>
                 </div>
               </div>
@@ -349,7 +385,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div>
                   <div className="flex justify-between text-[11px] mb-1">
                     <span className="text-text-secondary">Missing Equipment SOPs</span>
-                    <span className="text-danger font-bold">{mockCompliance.missingSOPs.length} Critical</span>
+                    <span className="text-danger font-bold">{complianceGaps} Critical</span>
                   </div>
                   <div className="h-1 bg-border/40 rounded-full overflow-hidden">
                     <div className="h-full bg-danger rounded-full" style={{ width: '40%' }} />

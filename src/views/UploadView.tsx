@@ -107,7 +107,7 @@ export const UploadView: React.FC = () => {
     formData.append("file", file);
 
     try {
-      const res = await fetch("http://localhost:8000/api/v1/upload", {
+      const res = await fetch("http://127.0.0.1:8000/api/v1/upload", {
         method: "POST",
         body: formData
       });
@@ -125,7 +125,7 @@ export const UploadView: React.FC = () => {
 
       const intervalId = window.setInterval(async () => {
         try {
-          const statusRes = await fetch(`http://localhost:8000/api/v1/document/${docData.id}`);
+          const statusRes = await fetch(`http://127.0.0.1:8000/api/v1/document/${docData.id}`);
           if (!statusRes.ok) throw new Error("Status fetch error");
           const data = await statusRes.json();
 
@@ -197,7 +197,7 @@ export const UploadView: React.FC = () => {
   };
 
   const pipelineNodes = [
-    { label: 'PDF OCR Scan', icon: FileText, desc: 'Digital Ingestion & OCR' },
+    { label: 'Doc Ingestion', icon: FileText, desc: 'Digital Ingestion & OCR' },
     { label: 'Entity Mining', icon: Cpu, desc: 'NLP Entity Extraction' },
     { label: 'Embeddings', icon: Layers, desc: 'Semantic Vector Ingestion' },
     { label: 'Graph Synthesis', icon: Network, desc: 'Knowledge Link Matching' },
@@ -229,7 +229,7 @@ export const UploadView: React.FC = () => {
             >
               <input
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,.docx,.xlsx,.csv,.json,.html,.htm,.md,.txt,.png,.jpg,.jpeg"
                 onChange={handleFileSelect}
                 className="absolute inset-0 opacity-0 cursor-pointer"
                 disabled={selectedFile !== null}
@@ -239,7 +239,7 @@ export const UploadView: React.FC = () => {
               </div>
               <p className="text-xs text-white font-bold">Drag and drop document package here</p>
               <p className="text-[10px] text-text-muted mt-1 leading-normal">
-                Supports PDF, DOCX, P&ID CAD schemas up to 100MB.<br />Automatic OCR extraction active.
+                Supports PDF, DOCX, XLSX, CSV, JSON, HTML, MD, TXT, Images up to 100MB.<br />Automatic OCR extraction active.
               </p>
               
               <button 

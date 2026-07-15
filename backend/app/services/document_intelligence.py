@@ -53,9 +53,15 @@ class DocumentIntelligenceEngine:
                 raw_text = DocumentIntelligenceEngine._extract_docx(file_path)
             elif ext == "xlsx":
                 raw_text = DocumentIntelligenceEngine._extract_xlsx(file_path)
+            elif ext == "csv":
+                raw_text = DocumentIntelligenceEngine._extract_csv(file_path)
+            elif ext == "json":
+                raw_text = DocumentIntelligenceEngine._extract_json(file_path)
+            elif ext in {"html", "htm"}:
+                raw_text = DocumentIntelligenceEngine._extract_html(file_path)
             elif ext in {"png", "jpg", "jpeg"}:
                 raw_text = DocumentIntelligenceEngine._extract_image(file_path)
-            elif ext == "txt":
+            elif ext in {"txt", "md"}:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     raw_text = f.read()
             else:
@@ -124,12 +130,52 @@ class DocumentIntelligenceEngine:
         wb = openpyxl.load_workbook(file_path, read_only=True)
         lines = []
         for sheet in wb.worksheets:
+            lines.append(f"--- Sheet: {sheet.title} ---")
             for row in sheet.iter_rows(values_only=True):
                 # Join cells
                 row_str = " | ".join([str(cell) for cell in row if cell is not None])
                 if row_str.strip():
                     lines.append(row_str)
         return "\n".join(lines)
+
+    @staticmethod
+    def _extract_csv(file_path: str) -> str:
+        import csv
+        lines = []
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.reader(f)
+            for row_idx, row in enumerate(reader):
+                row_str = " | ".join([cell.strip() for cell in row if cell is not None])
+                if row_str.strip():
+                    lines.append(f"Row {row_idx + 1}: {row_str}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _extract_json(file_path: str) -> str:
+        import json
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            lines = []
+            for k, v in data.items():
+                if isinstance(v, (dict, list)):
+                    lines.append(f"{k}: {json.dumps(v)}")
+                else:
+                    lines.append(f"{k}: {v}")
+            return "\n".join(lines)
+        return json.dumps(data, indent=2)
+
+    @staticmethod
+    def _extract_html(file_path: str) -> str:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            html = f.read()
+        # Remove script, style, head blocks
+        text = re.sub(r"<(script|style|head)[^>]*>([\s\S]*?)<\/\1>", "", html, flags=re.IGNORECASE)
+        # Strip all HTML tags
+        text = re.sub(r"<[^>]+>", " ", text)
+        # Standard entities replacements
+        text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
+        return text
 
     @staticmethod
     def _extract_image(file_path: str) -> str:

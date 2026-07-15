@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Mic,
   Paperclip,
@@ -10,16 +10,82 @@ import {
   ShieldCheck,
   Zap,
   HelpCircle,
-  FileCheck2
+  FileCheck2,
+  Plus,
+  Trash2,
+  MessageSquare
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
-import { copilotPresetChats } from '../data/mockData';
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  confidence?: number;
+  thinkingSteps?: {
+    id: string;
+    title: string;
+    duration: string;
+    desc: string;
+  }[];
+  sources?: {
+    id: string;
+    title: string;
+    code: string;
+    match: string;
+  }[];
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: number;
+}
+
+const getInitialSessions = (): { sessions: ChatSession[], activeId: string } => {
+  const saved = localStorage.getItem('plantmind_copilot_sessions');
+  const savedActive = localStorage.getItem('plantmind_active_session_id');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const activeId = (savedActive && parsed.some(s => s.id === savedActive)) ? savedActive : parsed[0].id;
+        return { sessions: parsed, activeId };
+      }
+    } catch (e) {
+      console.error("Failed to parse saved sessions:", e);
+    }
+  }
+  const defaultId = 'session-' + Date.now();
+  return {
+    sessions: [{
+      id: defaultId,
+      title: 'New Diagnostic Thread',
+      messages: [],
+      createdAt: Date.now()
+    }],
+    activeId: defaultId
+  };
+};
 
 export const CopilotView: React.FC = () => {
-  const [messages, setMessages] = useState<typeof copilotPresetChats>(copilotPresetChats);
+  const [sessions, setSessions] = useState<ChatSession[]>(() => getInitialSessions().sessions);
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => getInitialSessions().activeId);
   const [inputText, setInputText] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [selectedResponseIndex, setSelectedResponseIndex] = useState<number>(0);
+
+  // Sync sessions and active session to localStorage
+  useEffect(() => {
+    localStorage.setItem('plantmind_copilot_sessions', JSON.stringify(sessions));
+  }, [sessions]);
+
+  useEffect(() => {
+    localStorage.setItem('plantmind_active_session_id', activeSessionId);
+  }, [activeSessionId]);
+
+  const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0] || { messages: [] };
+  const messages = activeSession.messages;
 
   // Suggested questions for operator
   const suggestedQuestions = [
@@ -29,23 +95,50 @@ export const CopilotView: React.FC = () => {
     "Search safety audits for missing SOP warnings"
   ];
 
+  const updateActiveSessionMessages = (
+    newMsgs: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])
+  ) => {
+    setSessions(prevSessions => {
+      return prevSessions.map(session => {
+        if (session.id === activeSessionId) {
+          const resolvedMsgs = typeof newMsgs === 'function' ? newMsgs(session.messages) : newMsgs;
+          
+          let newTitle = session.title;
+          if (session.title === 'New Diagnostic Thread' && resolvedMsgs.length > 0) {
+            const firstUserMsg = resolvedMsgs.find(m => m.role === 'user');
+            if (firstUserMsg) {
+              newTitle = firstUserMsg.content.length > 30 
+                ? firstUserMsg.content.substring(0, 30) + '...' 
+                : firstUserMsg.content;
+            }
+          }
+
+          return {
+            ...session,
+            title: newTitle,
+            messages: resolvedMsgs
+          };
+        }
+        return session;
+      });
+    });
+  };
+
   const handleSendMessage = (text: string) => {
     if (!text.trim()) return;
 
-    // Add user message
-    const newMessages = [
-      ...messages,
-      {
-        role: 'user',
-        content: text
-      }
-    ];
-    setMessages(newMessages);
+    const userMessage: ChatMessage = {
+      role: 'user',
+      content: text
+    };
+
+    const newMessages = [...messages, userMessage];
+    updateActiveSessionMessages(newMessages);
     setInputText('');
     setIsThinking(true);
 
     // Call Backend API
-    fetch('http://localhost:8000/api/v1/copilot/query', {
+    fetch('http://127.0.0.1:8000/api/v1/copilot/query', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -57,7 +150,7 @@ export const CopilotView: React.FC = () => {
         return res.json();
       })
       .then((data) => {
-        const aiResponse = {
+        const aiResponse: ChatMessage = {
           role: 'assistant',
           content: data.content,
           confidence: data.confidence || 90,
@@ -74,7 +167,7 @@ export const CopilotView: React.FC = () => {
             match: source.match
           })) || []
         };
-        setMessages(prev => [...prev, aiResponse]);
+        updateActiveSessionMessages(prev => [...prev, aiResponse]);
         setIsThinking(false);
         setSelectedResponseIndex(newMessages.length);
       })
@@ -82,7 +175,7 @@ export const CopilotView: React.FC = () => {
         console.error('Error querying backend copilot:', err);
         // Fallback to client-side simulation when backend is unavailable
         setTimeout(() => {
-          let aiResponse = {
+          let aiResponse: ChatMessage = {
             role: 'assistant',
             content: "I have reviewed the telemetry for your request. No anomalous vibration spikes are currently active on GT-01 rotor bearing. Average amplitude is 1.2 mm/s, well within the 4.5 mm/s ISO 21940 limit. Cross-referencing against maintenance logs indicates the rotor alignment was successfully adjusted on July 2.",
             confidence: 98,
@@ -114,11 +207,54 @@ export const CopilotView: React.FC = () => {
             };
           }
 
-          setMessages(prev => [...prev, aiResponse]);
+          updateActiveSessionMessages(prev => [...prev, aiResponse]);
           setIsThinking(false);
           setSelectedResponseIndex(newMessages.length);
         }, 1500);
       });
+  };
+
+  const handleSwitchSession = (id: string) => {
+    setActiveSessionId(id);
+    setSelectedResponseIndex(0);
+  };
+
+  const handleCreateSession = () => {
+    const newId = 'session-' + Date.now();
+    const newSession: ChatSession = {
+      id: newId,
+      title: 'New Diagnostic Thread',
+      messages: [],
+      createdAt: Date.now()
+    };
+    setSessions(prev => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    setSelectedResponseIndex(0);
+  };
+
+  const handleDeleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (sessions.length === 1) {
+      const resetId = 'session-' + Date.now();
+      setSessions([{
+        id: resetId,
+        title: 'New Diagnostic Thread',
+        messages: [],
+        createdAt: Date.now()
+      }]);
+      setActiveSessionId(resetId);
+      setSelectedResponseIndex(0);
+      return;
+    }
+
+    const filtered = sessions.filter(s => s.id !== id);
+    setSessions(filtered);
+
+    if (activeSessionId === id) {
+      setActiveSessionId(filtered[0].id);
+      setSelectedResponseIndex(0);
+    }
   };
 
   const currentAssistantData = messages[selectedResponseIndex]?.role === 'assistant' 
@@ -128,95 +264,179 @@ export const CopilotView: React.FC = () => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-140px)]">
       {/* Left 2 columns: Chat Workspace */}
-      <div className="lg:col-span-2 flex flex-col justify-between h-full bg-card/30 border border-border/40 rounded-industrial p-4 overflow-hidden relative">
+      <div className="lg:col-span-2 flex h-full bg-card/30 border border-border/40 rounded-industrial overflow-hidden relative">
         {/* Background mesh grid */}
         <div className="absolute inset-0 blueprint-grid opacity-30 pointer-events-none" />
-
-        {/* Message Logs */}
-        <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar relative z-10">
-          {messages.map((msg, index) => {
-            const isUser = msg.role === 'user';
-            return (
-              <div
-                key={index}
-                onClick={() => {
-                  if (!isUser) setSelectedResponseIndex(index);
-                }}
-                className={`flex gap-3 max-w-[85%] ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto cursor-pointer group'}`}
-              >
-                {/* Icon */}
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-bold select-none text-xs
-                  ${isUser 
-                    ? 'bg-gradient-to-tr from-primary to-orange-600 shadow-glow-orange' 
-                    : 'bg-gradient-to-tr from-secondary to-cyan-600 shadow-glow-cyan'
-                  }
-                `}>
-                  {isUser ? 'OP' : <Cpu className="w-4 h-4 text-white" />}
+        {/* Threads Sidebar */}
+        <div className="w-56 border-r border-border/40 flex flex-col bg-card/10 z-10">
+          <div className="p-3 border-b border-border/40 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider">Threads</span>
+            </div>
+            <button 
+              onClick={handleCreateSession}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-primary/10 hover:bg-primary/20 border border-primary/30 rounded-xl text-xs font-bold text-primary hover:text-white transition-all duration-200 cursor-pointer shadow-inner"
+              title="New Chat"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Chat
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar">
+            {sessions.map((session) => {
+              const isActive = session.id === activeSessionId;
+              return (
+                <div
+                  key={session.id}
+                  onClick={() => handleSwitchSession(session.id)}
+                  className={`group flex items-center justify-between p-2.5 rounded-xl border text-xs cursor-pointer transition-all duration-200
+                    ${isActive 
+                      ? 'bg-primary/10 border-primary/40 text-white shadow-glow-orange/20' 
+                      : 'bg-transparent border-transparent text-text-secondary hover:text-white hover:bg-card-secondary/30'
+                    }
+                  `}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <MessageSquare className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-primary' : 'text-text-muted'}`} />
+                    <span className="truncate font-sans font-medium">{session.title}</span>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteSession(session.id, e)}
+                    className="p-1 text-text-muted hover:text-danger hover:bg-danger/10 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer flex-shrink-0"
+                    title="Delete Thread"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                 </div>
+              );
+            })}
+          </div>
+        </div>
 
-                {/* Message Bubble */}
-                <div className={`p-4 rounded-industrial border text-xs leading-relaxed transition-all duration-300
-                  ${isUser 
-                    ? 'bg-primary/10 border-primary/30 text-white rounded-tr-none' 
-                    : `bg-card border-border/60 text-text-secondary rounded-tl-none 
-                       ${selectedResponseIndex === index ? 'border-secondary shadow-glow-cyan text-white' : 'hover:border-border hover:bg-card-secondary/40'}`
-                  }
-                `}>
-                  <p className="whitespace-pre-line">{msg.content}</p>
-                  
-                  {!isUser && (
-                    <div className="flex justify-between items-center mt-3 pt-2 border-t border-border/30 text-[10px] text-text-muted">
-                      <span className="flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-success" />
-                        Confidence Score: <span className="text-secondary font-bold font-code">{msg.confidence}%</span>
-                      </span>
-                      <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-secondary font-mono flex items-center gap-0.5">
-                        Click to view trace
-                      </span>
+        {/* Main Chat Workspace */}
+        <div className="flex-1 flex flex-col justify-between p-4 h-full overflow-hidden relative">
+          {/* Message Logs */}
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4 scrollbar relative z-10">
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 select-none mt-6">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary to-orange-600 shadow-glow-orange flex items-center justify-center text-white mb-4 animate-pulse">
+                  <Cpu className="w-8 h-8" />
+                </div>
+                <h3 className="text-sm font-bold text-white mb-1">PlantMind AI Copilot</h3>
+                <p className="text-xs text-text-muted max-w-[320px] leading-relaxed mb-6">
+                  Your industrial advisor. Ask questions about equipment health, safety protocols, telemetry, or past incidents.
+                </p>
+                
+                <div className="grid grid-cols-1 gap-2.5 max-w-[400px] w-full text-left">
+                  <div className="p-3 bg-card-secondary/40 border border-border/40 rounded-xl flex items-start gap-3">
+                    <span className="text-primary text-xs mt-0.5">⚡</span>
+                    <div>
+                      <p className="text-xs font-bold text-white">Instant Diagnostics</p>
+                      <p className="text-[11px] text-text-secondary mt-0.5">Run telemetry health checks on active plant equipment.</p>
                     </div>
-                  )}
+                  </div>
+                  <div className="p-3 bg-card-secondary/40 border border-border/40 rounded-xl flex items-start gap-3">
+                    <span className="text-secondary text-xs mt-0.5">📄</span>
+                    <div>
+                      <p className="text-xs font-bold text-white">SOP Verification</p>
+                      <p className="text-[11px] text-text-secondary mt-0.5">Cross-reference active parameters with safety regulations and SOPs.</p>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-card-secondary/40 border border-border/40 rounded-xl flex items-start gap-3">
+                    <span className="text-success text-xs mt-0.5">🔍</span>
+                    <div>
+                      <p className="text-xs font-bold text-white">Knowledge Tracing</p>
+                      <p className="text-[11px] text-text-secondary mt-0.5">Inspect thinking timelines and document citations for each response.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
-            );
-          })}
+            ) : (
+              messages.map((msg, index) => {
+                const isUser = msg.role === 'user';
+                return (
+                  <div
+                    key={index}
+                    onClick={() => {
+                      if (!isUser) setSelectedResponseIndex(index);
+                    }}
+                    className={`flex gap-3 max-w-[85%] ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto cursor-pointer group'}`}
+                  >
+                    {/* Icon */}
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-bold select-none text-xs
+                      ${isUser 
+                        ? 'bg-gradient-to-tr from-primary to-orange-600 shadow-glow-orange' 
+                        : 'bg-gradient-to-tr from-secondary to-cyan-600 shadow-glow-cyan'
+                      }
+                    `}>
+                      {isUser ? 'OP' : <Cpu className="w-4 h-4 text-white" />}
+                    </div>
 
-          {/* Thinking animation */}
-          {isThinking && (
-            <div className="flex gap-3 max-w-[80%] mr-auto">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-secondary to-cyan-600 shadow-glow-cyan flex items-center justify-center text-white flex-shrink-0 select-none">
-                <Cpu className="w-4 h-4 animate-spin" />
-              </div>
-              <div className="p-4 bg-card border border-border/60 text-text-muted rounded-industrial rounded-tl-none text-xs">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span>
-                  </span>
-                  <span className="font-mono">PlantMind AI is cross-referencing SCADA history...</span>
+                    {/* Message Bubble */}
+                    <div className={`p-4 rounded-industrial border text-xs leading-relaxed transition-all duration-300
+                      ${isUser 
+                        ? 'bg-primary/10 border-primary/30 text-white rounded-tr-none' 
+                        : `bg-card border-border/60 text-text-secondary rounded-tl-none 
+                           ${selectedResponseIndex === index ? 'border-secondary shadow-glow-cyan text-white' : 'hover:border-border hover:bg-card-secondary/40'}`
+                      }
+                    `}>
+                      <p className="whitespace-pre-line">{msg.content}</p>
+                      
+                      {!isUser && (
+                        <div className="flex justify-between items-center mt-3 pt-2 border-t border-border/30 text-[10px] text-text-muted">
+                          <span className="flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+                            Confidence Score: <span className="text-secondary font-bold font-code">{msg.confidence}%</span>
+                          </span>
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-secondary font-mono flex items-center gap-0.5">
+                            Click to view trace
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {/* Thinking animation */}
+            {isThinking && (
+              <div className="flex gap-3 max-w-[80%] mr-auto">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-secondary to-cyan-600 shadow-glow-cyan flex items-center justify-center text-white flex-shrink-0 select-none">
+                  <Cpu className="w-4 h-4 animate-spin" />
                 </div>
+                <div className="p-4 bg-card border border-border/60 text-text-muted rounded-industrial rounded-tl-none text-xs">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span>
+                    </span>
+                    <span className="font-mono">PlantMind AI is cross-referencing SCADA history...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Suggestion list */}
+          {messages.length === 0 && !isThinking && (
+            <div className="mb-4 z-10">
+              <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider block mb-2 px-1">Suggested Diagnostics</span>
+              <div className="flex flex-wrap gap-2">
+                {suggestedQuestions.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => handleSendMessage(q)}
+                    className="px-3 py-1.5 bg-card/60 hover:bg-card border border-border/50 hover:border-primary/40 rounded-xl text-[11px] text-text-secondary hover:text-white transition-all duration-200 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                    {q}
+                  </button>
+                ))}
               </div>
             </div>
           )}
-        </div>
-
-        {/* Suggestion list */}
-        {messages.length === 2 && !isThinking && (
-          <div className="mb-4 z-10">
-            <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider block mb-2 px-1">Suggested Diagnostics</span>
-            <div className="flex flex-wrap gap-2">
-              {suggestedQuestions.map((q) => (
-                <button
-                  key={q}
-                  onClick={() => handleSendMessage(q)}
-                  className="px-3 py-1.5 bg-card/60 hover:bg-card border border-border/50 hover:border-primary/40 rounded-xl text-[11px] text-text-secondary hover:text-white transition-all duration-200 cursor-pointer flex items-center gap-1.5"
-                >
-                  <HelpCircle className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                  {q}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Prompt Input Box */}
         <div className="relative border border-border/80 bg-card rounded-industrial p-3 flex flex-col gap-2 shadow-2xl z-10">
@@ -253,6 +473,7 @@ export const CopilotView: React.FC = () => {
           </div>
         </div>
       </div>
+    </div>
 
       {/* Right Column: AI Diagnostics Workbench */}
       <div className="space-y-6 h-full overflow-y-auto pr-1">

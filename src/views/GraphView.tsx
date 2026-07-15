@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ReactFlow, 
   Controls, 
@@ -26,17 +26,21 @@ const CustomGraphNode = ({ data }: any) => {
   const nodeStyles: Record<string, string> = {
     equipment: 'border-primary bg-primary/5 shadow-[0_0_15px_rgba(249,115,22,0.1)]',
     document: 'border-sky-500 bg-sky-500/5 shadow-[0_0_15px_rgba(14,165,233,0.1)]',
-    engineer: 'border-success bg-success/5 shadow-[0_0_15px_rgba(34,197,94,0.1)]',
+    engineer: 'border-emerald-500 bg-emerald-500/5 shadow-[0_0_15px_rgba(16,185,129,0.1)]',
     sop: 'border-purple-500 bg-purple-500/5 shadow-[0_0_15px_rgba(168,85,247,0.1)]',
-    incident: 'border-danger bg-danger/10 shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse'
+    incident: 'border-danger bg-danger/10 shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse',
+    maintenance: 'border-yellow-500 bg-yellow-500/5 shadow-[0_0_15px_rgba(234,179,8,0.1)]',
+    compliance_rule: 'border-success bg-success/5 shadow-[0_0_15px_rgba(34,197,94,0.1)]'
   };
 
   const badgeStyles: Record<string, string> = {
     equipment: 'text-primary bg-primary/10 border-primary/20',
     document: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
-    engineer: 'text-success bg-success/10 border-success/20',
+    engineer: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
     sop: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
-    incident: 'text-danger bg-danger/10 border-danger/20'
+    incident: 'text-danger bg-danger/10 border-danger/20',
+    maintenance: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
+    compliance_rule: 'text-success bg-success/10 border-success/20'
   };
 
   return (
@@ -46,10 +50,10 @@ const CustomGraphNode = ({ data }: any) => {
       
       <div className="flex justify-between items-center mb-1">
         <span className={`text-[8px] font-code px-1.5 py-0.5 rounded border uppercase tracking-wider font-bold ${badgeStyles[type]}`}>
-          {type}
+          {type === 'compliance_rule' ? 'compliance' : type}
         </span>
         {status && (
-          <span className={`w-1.5 h-1.5 rounded-full ${status === 'healthy' ? 'bg-success' : status === 'warning' ? 'bg-warning' : 'bg-danger'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${status === 'healthy' || status === 'completed' || status === 'compliant' || status === 'active' || status === 'approved' || status === 'enforced' ? 'bg-success' : status === 'warning' ? 'bg-warning' : 'bg-danger'}`} />
         )}
       </div>
       
@@ -72,86 +76,255 @@ export const GraphView: React.FC<GraphViewProps> = ({
   setActiveTab,
   openRcaWithId
 }) => {
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>('node-eq-b3');
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [rawNodes, setRawNodes] = useState<Node[]>([]);
+  const [rawEdges, setRawEdges] = useState<Edge[]>([]);
+
+  // Category Filter States - Default high density items (documents, engineers, maintenance logs) to false
+  const [filters, setFilters] = useState<Record<string, boolean>>({
+    equipment: true,
+    incident: true,
+    sop: true,
+    compliance_rule: true,
+    document: false,
+    engineer: false,
+    maintenance: false
+  });
 
   // Register Custom Nodes type inside useMemo to avoid re-renders
   const nodeTypes = useMemo(() => ({
     custom: CustomGraphNode
   }), []);
 
-  // Map our mock nodes into React Flow specifications
-  // Coordinate positions designed to look structured and readable
-  const initialNodes: Node[] = useMemo(() => {
-    const layoutCoords: Record<string, { x: number; y: number }> = {
-      'node-eq-b3': { x: 300, y: 50 },
-      'node-doc-pid': { x: 100, y: 150 },
-      'node-sop-402': { x: 300, y: 200 },
-      'node-eng-chen': { x: 500, y: 150 },
-      'node-inc-089': { x: 420, y: 320 },
-      'node-eq-gt01': { x: 750, y: 50 },
-      'node-doc-man': { x: 850, y: 180 },
-      'node-eq-rc2': { x: -100, y: 80 },
-      'node-doc-hzp': { x: -250, y: 180 },
-      'node-sop-109': { x: -50, y: 220 },
-      'node-inc-077': { x: -120, y: 340 },
-      'node-eng-marcus': { x: 120, y: 320 }
-    };
+  useEffect(() => {
+    fetch('http://127.0.0.1:8000/api/v1/graph')
+      .then((res) => {
+        if (!res.ok) throw new Error('API Response Error');
+        return res.json();
+      })
+      .then((data) => {
+        if (data && Array.isArray(data.nodes) && data.nodes.length > 0) {
+          const mappedNodes = data.nodes.map((node: any) => ({
+            ...node,
+            type: 'custom',
+            data: {
+              ...node.data,
+              type: node.type
+            }
+          }));
 
-    return mockGraph.nodes.map(node => ({
-      id: node.id,
-      type: 'custom',
-      position: layoutCoords[node.id] || { x: Math.random() * 400, y: Math.random() * 400 },
-      data: { 
-        label: node.label, 
-        type: node.type, 
-        status: node.status, 
-        details: node.details 
-      }
-    }));
+          const mappedEdges = data.edges.map((edge: any) => {
+            return {
+              ...edge,
+              labelStyle: { fill: '#64748B', fontSize: 8, fontFamily: 'JetBrains Mono', fontWeight: 'bold' },
+              labelBgPadding: [4, 2] as [number, number],
+              labelBgBorderRadius: 4,
+              labelBgStyle: { fill: '#151B23', fillOpacity: 0.8 }
+            };
+          });
+
+          setRawNodes(mappedNodes);
+          setRawEdges(mappedEdges);
+          
+          // Set first equipment node as selected by default if available
+          const firstEq = mappedNodes.find((n: any) => n.data.type === 'equipment');
+          if (firstEq) {
+            setSelectedNodeId(firstEq.id);
+          } else if (mappedNodes.length > 0) {
+            setSelectedNodeId(mappedNodes[0].id);
+          }
+        } else {
+          loadMockGraph();
+        }
+      })
+      .catch((err) => {
+        console.error('Error fetching graph from backend:', err);
+        loadMockGraph();
+      });
+
+    function loadMockGraph() {
+      const layoutCoords: Record<string, { x: number; y: number }> = {
+        'node-eq-b3': { x: 300, y: 50 },
+        'node-doc-pid': { x: 100, y: 150 },
+        'node-sop-402': { x: 300, y: 200 },
+        'node-eng-chen': { x: 500, y: 150 },
+        'node-inc-089': { x: 420, y: 320 },
+        'node-eq-gt01': { x: 750, y: 50 },
+        'node-doc-man': { x: 850, y: 180 },
+        'node-eq-rc2': { x: -100, y: 80 },
+        'node-doc-hzp': { x: -250, y: 180 },
+        'node-sop-109': { x: -50, y: 220 },
+        'node-inc-077': { x: -120, y: 340 },
+        'node-eng-marcus': { x: 120, y: 320 }
+      };
+
+      const fallbackNodes = mockGraph.nodes.map(node => ({
+        id: node.id,
+        type: 'custom',
+        position: layoutCoords[node.id] || { x: Math.random() * 400, y: Math.random() * 400 },
+        data: { 
+          label: node.label, 
+          type: node.type, 
+          status: node.status, 
+          details: node.details 
+        }
+      }));
+
+      const fallbackEdges = mockGraph.edges.map(edge => {
+        return {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          label: edge.label,
+          labelStyle: { fill: '#64748B', fontSize: 8, fontFamily: 'JetBrains Mono', fontWeight: 'bold' },
+          labelBgPadding: [4, 2] as [number, number],
+          labelBgBorderRadius: 4,
+          labelBgStyle: { fill: '#151B23', fillOpacity: 0.8 },
+          animated: edge.animated || false
+        };
+      });
+
+      setRawNodes(fallbackNodes);
+      setRawEdges(fallbackEdges);
+      setSelectedNodeId('node-eq-b3');
+    }
   }, []);
 
-  // Map our mock edges into React Flow specifications
-  const initialEdges: Edge[] = useMemo(() => {
-    return mockGraph.edges.map(edge => {
-      // Color-coding connection lines
-      let edgeColor = 'rgba(168, 179, 197, 0.25)'; // Secondary text default
-      if (edge.source.includes('inc') || edge.target.includes('inc')) {
-        edgeColor = 'rgba(239, 68, 68, 0.4)'; // Red danger line for incident relations
-      } else if (edge.animated) {
-        edgeColor = 'rgba(249, 115, 22, 0.5)'; // Orange primary active line
+  // Filter Toggle Handler
+  const toggleFilter = (key: string) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  // 1. Filter Nodes based on active checkboxes
+  const filteredNodes = useMemo(() => {
+    return rawNodes.filter((node: any) => {
+      const type = node.data?.type;
+      return filters[type] ?? true;
+    });
+  }, [rawNodes, filters]);
+
+  // 2. Filter Edges ensuring both source & target exist in the visible nodes list
+  const filteredEdges = useMemo(() => {
+    return rawEdges.filter((edge: any) => {
+      const sourceExists = filteredNodes.some(n => n.id === edge.source);
+      const targetExists = filteredNodes.some(n => n.id === edge.target);
+      return sourceExists && targetExists;
+    });
+  }, [rawEdges, filteredNodes]);
+
+  // 3. Focus Mode: Find all node IDs connected directly to the selected node
+  const connectedNodeIds = useMemo(() => {
+    if (!selectedNodeId) return new Set<string>();
+    const ids = new Set<string>([selectedNodeId]);
+    filteredEdges.forEach(edge => {
+      if (edge.source === selectedNodeId) {
+        ids.add(edge.target);
+      } else if (edge.target === selectedNodeId) {
+        ids.add(edge.source);
+      }
+    });
+    return ids;
+  }, [selectedNodeId, filteredEdges]);
+
+  // 4. Flow Nodes with Dynamic Highlight/Fade style mapping
+  const nodesForFlow = useMemo(() => {
+    if (!selectedNodeId) return filteredNodes;
+    return filteredNodes.map(node => {
+      const isFocused = connectedNodeIds.has(node.id);
+      return {
+        ...node,
+        style: {
+          ...node.style,
+          opacity: isFocused ? 1.0 : 0.15,
+          transition: 'opacity 0.25s ease-in-out'
+        }
+      };
+    });
+  }, [filteredNodes, selectedNodeId, connectedNodeIds]);
+
+  // 5. Flow Edges with Dynamic Opacity & Glow highlight mapping
+  const edgesForFlow = useMemo(() => {
+    return filteredEdges.map(edge => {
+      const isRelated = selectedNodeId ? (edge.source === selectedNodeId || edge.target === selectedNodeId) : false;
+      
+      let strokeColor = 'rgba(168, 179, 197, 0.25)'; // Default unselected
+      let strokeWidth = 1.5;
+      
+      if (selectedNodeId) {
+        if (isRelated) {
+          // Highlight active paths with distinctive colors
+          if (edge.source.includes('inc') || edge.target.includes('inc')) {
+            strokeColor = 'rgba(239, 68, 68, 0.85)'; // Red for Incidents
+          } else if (edge.source.includes('sop') || edge.target.includes('sop')) {
+            strokeColor = 'rgba(168, 85, 247, 0.85)'; // Purple for SOPs
+          } else if (edge.source.includes('rule') || edge.target.includes('rule')) {
+            strokeColor = 'rgba(34, 197, 94, 0.85)';  // Green for Rules
+          } else {
+            strokeColor = 'rgba(249, 115, 22, 0.85)';  // Orange for others
+          }
+          strokeWidth = 2.5;
+        } else {
+          // Dim non-connected edges
+          strokeColor = 'rgba(168, 179, 197, 0.04)';
+          strokeWidth = 1.0;
+        }
+      } else {
+        // Fallback colors when nothing is selected
+        if (edge.source.includes('inc') || edge.target.includes('inc')) {
+          strokeColor = 'rgba(239, 68, 68, 0.45)';
+        } else if (edge.animated) {
+          strokeColor = 'rgba(249, 115, 22, 0.5)';
+        }
       }
 
       return {
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        label: edge.label,
-        labelStyle: { fill: '#64748B', fontSize: 8, fontFamily: 'JetBrains Mono', fontWeight: 'bold' },
-        labelBgPadding: [4, 2],
-        labelBgBorderRadius: 4,
-        labelBgStyle: { fill: '#151B23', fillOpacity: 0.8 },
-        animated: edge.animated || false,
-        style: { stroke: edgeColor, strokeWidth: 1.5 }
+        ...edge,
+        animated: selectedNodeId ? (isRelated && edge.animated) : edge.animated,
+        style: {
+          ...edge.style,
+          stroke: strokeColor,
+          strokeWidth,
+          transition: 'stroke 0.25s, stroke-width 0.25s'
+        }
       };
     });
-  }, []);
+  }, [filteredEdges, selectedNodeId]);
 
-  // Find clicked node details
+  // Find clicked node details in raw lists so inspection details work even if type filter is unchecked
   const selectedNodeData = useMemo(() => {
     if (!selectedNodeId) return null;
-    return mockGraph.nodes.find(n => n.id === selectedNodeId) || null;
-  }, [selectedNodeId]);
+    return (rawNodes.find(n => n.id === selectedNodeId) as any) || null;
+  }, [selectedNodeId, rawNodes]);
 
-  // Find node links
+  // Find node links in raw lists
   const relatedLinks = useMemo(() => {
     if (!selectedNodeId) return [];
-    return mockGraph.edges.filter(
+    return rawEdges.filter(
       edge => edge.source === selectedNodeId || edge.target === selectedNodeId
     );
-  }, [selectedNodeId]);
+  }, [selectedNodeId, rawEdges]);
+
+  // Select node handler with automatic type filter activation if targeted node type is hidden
+  const handleSelectNode = (nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    
+    const targetNode = rawNodes.find(n => n.id === nodeId) as any;
+    if (targetNode && targetNode.data?.type) {
+      const type = targetNode.data.type;
+      if (!filters[type]) {
+        setFilters(prev => ({
+          ...prev,
+          [type]: true
+        }));
+      }
+    }
+  };
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => {
-    setSelectedNodeId(node.id);
+    handleSelectNode(node.id);
   };
 
   return (
@@ -165,28 +338,104 @@ export const GraphView: React.FC<GraphViewProps> = ({
             Active Knowledge Graph Network
           </h3>
           <span className="text-[9px] text-text-muted mt-0.5 font-mono">
-            {mockGraph.nodes.length} Ingested Nodes // {mockGraph.edges.length} Synthesis Edges
+            Showing {nodesForFlow.length} of {rawNodes.length} Nodes // {edgesForFlow.filter(e => (e.style as any)?.strokeWidth > 1).length} Focused Connections
           </span>
         </div>
 
+        {/* Dynamic Category Filters Toolbar */}
+        <div className="absolute top-16 left-4 z-10 flex flex-wrap gap-2 pointer-events-auto bg-[#0b0f14]/80 p-2 rounded-xl border border-border/20 backdrop-blur max-w-[calc(100%-32px)]">
+          <button
+            onClick={() => toggleFilter('equipment')}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-bold font-mono border transition-all cursor-pointer ${
+              filters.equipment 
+                ? 'bg-primary/20 border-primary text-primary shadow-[0_0_10px_rgba(249,115,22,0.15)]' 
+                : 'bg-card/40 border-border/40 text-text-muted hover:border-border'
+            }`}
+          >
+            Assets ({rawNodes.filter(n => n.data?.type === 'equipment').length})
+          </button>
+          <button
+            onClick={() => toggleFilter('incident')}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-bold font-mono border transition-all cursor-pointer ${
+              filters.incident 
+                ? 'bg-danger/20 border-danger text-danger shadow-[0_0_10px_rgba(239,68,68,0.15)]' 
+                : 'bg-card/40 border-border/40 text-text-muted hover:border-border'
+            }`}
+          >
+            Incidents ({rawNodes.filter(n => n.data?.type === 'incident').length})
+          </button>
+          <button
+            onClick={() => toggleFilter('sop')}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-bold font-mono border transition-all cursor-pointer ${
+              filters.sop 
+                ? 'bg-purple-500/20 border-purple-500 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.15)]' 
+                : 'bg-card/40 border-border/40 text-text-muted hover:border-border'
+            }`}
+          >
+            SOPs ({rawNodes.filter(n => n.data?.type === 'sop').length})
+          </button>
+          <button
+            onClick={() => toggleFilter('compliance_rule')}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-bold font-mono border transition-all cursor-pointer ${
+              filters.compliance_rule 
+                ? 'bg-success/20 border-success text-success shadow-[0_0_10px_rgba(34,197,94,0.15)]' 
+                : 'bg-card/40 border-border/40 text-text-muted hover:border-border'
+            }`}
+          >
+            Compliance Rules ({rawNodes.filter(n => n.data?.type === 'compliance_rule').length})
+          </button>
+          <button
+            onClick={() => toggleFilter('document')}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-bold font-mono border transition-all cursor-pointer ${
+              filters.document 
+                ? 'bg-sky-500/20 border-sky-500 text-sky-400 shadow-[0_0_10px_rgba(14,165,233,0.15)]' 
+                : 'bg-card/40 border-border/40 text-text-muted hover:border-border'
+            }`}
+          >
+            Documents ({rawNodes.filter(n => n.data?.type === 'document').length})
+          </button>
+          <button
+            onClick={() => toggleFilter('engineer')}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-bold font-mono border transition-all cursor-pointer ${
+              filters.engineer 
+                ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.15)]' 
+                : 'bg-card/40 border-border/40 text-text-muted hover:border-border'
+            }`}
+          >
+            Engineers ({rawNodes.filter(n => n.data?.type === 'engineer').length})
+          </button>
+          <button
+            onClick={() => toggleFilter('maintenance')}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-bold font-mono border transition-all cursor-pointer ${
+              filters.maintenance 
+                ? 'bg-yellow-500/20 border-yellow-500 text-yellow-400 shadow-[0_0_10px_rgba(234,179,8,0.15)]' 
+                : 'bg-card/40 border-border/40 text-text-muted hover:border-border'
+            }`}
+          >
+            Maintenance ({rawNodes.filter(n => n.data?.type === 'maintenance').length})
+          </button>
+        </div>
+
         {/* Legend */}
-        <div className="absolute top-4 right-4 z-10 p-3 bg-card-secondary/70 border border-border/30 rounded-xl flex flex-col gap-1.5 text-[9px] font-mono pointer-events-auto">
+        <div className="absolute top-4 right-4 z-10 p-3 bg-card-secondary/70 border border-border/30 rounded-xl flex flex-col gap-1.5 text-[9px] font-mono pointer-events-auto backdrop-blur">
           <div className="flex items-center gap-2"><span className="w-2 h-2 rounded bg-primary" /> Equipment</div>
           <div className="flex items-center gap-2"><span className="w-2 h-2 rounded bg-sky-500" /> Document</div>
-          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded bg-success" /> Engineer</div>
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded bg-emerald-500" /> Engineer</div>
           <div className="flex items-center gap-2"><span className="w-2 h-2 rounded bg-purple-500" /> Standard SOP</div>
           <div className="flex items-center gap-2"><span className="w-2 h-2 rounded bg-danger" /> Incident</div>
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded bg-yellow-500" /> Maintenance</div>
+          <div className="flex items-center gap-2"><span className="w-2 h-2 rounded bg-success" /> Compliance Rule</div>
         </div>
 
         {/* React Flow Core Canvas */}
         <div className="w-full h-full">
           <ReactFlow
-            nodes={initialNodes}
-            edges={initialEdges}
+            nodes={nodesForFlow}
+            edges={edgesForFlow}
             nodeTypes={nodeTypes}
             onNodeClick={onNodeClick}
             fitView
-            minZoom={0.5}
+            minZoom={0.01}
             maxZoom={1.5}
           >
             <Background color="#2B3647" gap={16} size={1} />
@@ -207,7 +456,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                     Node Inspector
                   </span>
                   <h3 className="text-sm font-bold text-white mt-1">
-                    {selectedNodeData.label}
+                    {selectedNodeData.data.label}
                   </h3>
                 </div>
                 <span className="text-[9px] text-text-muted font-mono font-bold bg-card p-1.5 rounded border border-border/60">
@@ -222,10 +471,10 @@ export const GraphView: React.FC<GraphViewProps> = ({
                     Ingested Parameters
                   </h4>
                   <div className="space-y-2 p-3 bg-card rounded-xl border border-border/40">
-                    {selectedNodeData.details && Object.entries(selectedNodeData.details).map(([key, val]) => (
+                    {selectedNodeData.data.details && Object.entries(selectedNodeData.data.details).map(([key, val]) => (
                       <div key={key} className="flex justify-between text-xs">
                         <span className="text-text-muted">{key}</span>
-                        <span className="text-white font-medium">{val}</span>
+                        <span className="text-white font-medium">{val as any}</span>
                       </div>
                     ))}
                   </div>
@@ -240,12 +489,12 @@ export const GraphView: React.FC<GraphViewProps> = ({
                     {relatedLinks.map((link) => {
                       const isSource = link.source === selectedNodeId;
                       const targetId = isSource ? link.target : link.source;
-                      const targetNode = mockGraph.nodes.find(n => n.id === targetId);
+                      const targetNode = rawNodes.find(n => n.id === targetId) as any;
 
                       return (
                         <div
                           key={link.id}
-                          onClick={() => setSelectedNodeId(targetId)}
+                          onClick={() => handleSelectNode(targetId)}
                           className="p-2 bg-card-secondary/40 border border-border/40 hover:border-primary/30 rounded-lg text-xs flex justify-between items-center group cursor-pointer transition-all duration-200"
                         >
                           <div>
@@ -253,7 +502,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                               {link.label}
                             </span>
                             <span className="text-white font-medium group-hover:text-primary transition-colors line-clamp-1">
-                              {targetNode?.label}
+                              {targetNode?.data?.label || targetNode?.label}
                             </span>
                           </div>
                           <ArrowRight className="w-3.5 h-3.5 text-text-muted group-hover:text-white transition-colors" />
@@ -267,9 +516,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
             {/* Actions for active node types */}
             <div className="mt-6 pt-4 border-t border-border/20 space-y-2">
-              {selectedNodeData.type === 'incident' && (
+              {selectedNodeData.data.type === 'incident' && (
                 <button
-                  onClick={() => openRcaWithId('INC-2026-089')}
+                  onClick={() => openRcaWithId(selectedNodeData.id.replace('doc_', '').replace('inc_', '').toUpperCase())}
                   className="w-full py-2.5 bg-danger text-white text-xs font-bold rounded-xl hover:bg-danger/80 transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer border border-danger/30"
                 >
                   <AlertTriangle className="w-4 h-4 text-white" />
@@ -277,7 +526,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 </button>
               )}
 
-              {selectedNodeData.type === 'equipment' && (
+              {selectedNodeData.data.type === 'equipment' && (
                 <button
                   onClick={() => openRcaWithId('INC-2026-089')}
                   className="w-full py-2.5 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/80 transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-glow-orange border border-primary/20"

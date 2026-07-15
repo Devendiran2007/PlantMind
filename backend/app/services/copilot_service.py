@@ -27,29 +27,34 @@ class CopilotService:
         sources = []
         similarity_score = 0.0
         
-        try:
-            # Query similarity chunks
-            from app.services.rag_service import Chroma
-            embeddings = get_embeddings()
-            vector_store = Chroma(
-                collection_name="plantmind_rag",
-                embedding_function=embeddings,
-                persist_directory=settings.VECTOR_DB_DIR
-            )
-            results = vector_store.similarity_search_with_relevance_scores(query_text, k=3)
-            if results:
-                rag_chunks = [r[0].page_content for r in results]
-                similarity_score = float(results[0][1])
-                
-                # Fetch filenames for citations
-                for r in results:
-                    doc_id = r[0].metadata.get("document_id")
-                    if doc_id:
-                        db_doc = db.query(Document).filter(Document.id == doc_id).first()
-                        if db_doc and db_doc.filename not in sources:
-                            sources.append(db_doc.filename)
-        except Exception as e:
-            logger.warning(f"Vector retrieval failed inside Copilot pipeline: {e}")
+        from app.services.rag_service import LANGCHAIN_AVAILABLE
+        
+        if LANGCHAIN_AVAILABLE:
+            try:
+                # Query similarity chunks
+                from app.services.rag_service import Chroma
+                embeddings = get_embeddings()
+                vector_store = Chroma(
+                    collection_name="plantmind_rag",
+                    embedding_function=embeddings,
+                    persist_directory=settings.VECTOR_DB_DIR
+                )
+                results = vector_store.similarity_search_with_relevance_scores(query_text, k=3)
+                if results:
+                    rag_chunks = [r[0].page_content for r in results]
+                    similarity_score = float(results[0][1])
+                    
+                    # Fetch filenames for citations
+                    for r in results:
+                        doc_id = r[0].metadata.get("document_id")
+                        if doc_id:
+                            db_doc = db.query(Document).filter(Document.id == doc_id).first()
+                            if db_doc and db_doc.filename not in sources:
+                                sources.append(db_doc.filename)
+            except Exception as e:
+                logger.warning(f"Vector retrieval failed inside Copilot pipeline: {e}")
+        else:
+            logger.info("LangChain/Chroma is disabled on Python 3.14. Bypassing vector search in Copilot.")
             
         # SQL Keyword fallback if vector yields nothing
         if not rag_chunks:
@@ -72,19 +77,15 @@ class CopilotService:
                 keywords = [w.strip("?,.!:;()\"'") for w in words if len(w.strip("?,.!:;()\"'")) >= 3 and w.lower() not in stopwords]
                 
             if keywords:
+                from sqlalchemy import and_, or_
                 # Query chunks that match all keywords if possible (AND)
-                query_filter = DocumentChunk.content.like(f"%{keywords[0]}%")
-                for kw in keywords[1:]:
-                    query_filter = query_filter & DocumentChunk.content.like(f"%{kw}%")
-                
-                db_chunks = db.query(DocumentChunk).filter(query_filter).limit(3).all()
+                query_filters = [DocumentChunk.content.like(f"%{kw}%") for kw in keywords]
+                db_chunks = db.query(DocumentChunk).filter(and_(*query_filters)).limit(3).all()
                 
                 # Fallback to any keyword (OR) if no chunks match all
                 if not db_chunks:
-                    or_filter = DocumentChunk.content.like(f"%{keywords[0]}%")
-                    for kw in keywords[1:]:
-                        or_filter = or_filter | DocumentChunk.content.like(f"%{kw}%")
-                    db_chunks = db.query(DocumentChunk).filter(or_filter).limit(3).all()
+                    or_filters = [DocumentChunk.content.like(f"%{kw}%") for kw in keywords]
+                    db_chunks = db.query(DocumentChunk).filter(or_(*or_filters)).limit(3).all()
                     
                 rag_chunks = [c.content for c in db_chunks]
                 similarity_score = 0.75 if db_chunks else 0.0
@@ -207,7 +208,7 @@ QUERY:
         # Try Gemini fallback
         if not answer and settings.GEMINI_API_KEY and os.getenv("TESTING") != "True":
             try:
-                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
+                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"temperature": 0.0}

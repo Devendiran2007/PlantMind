@@ -13,7 +13,7 @@ import {
   FileCheck2
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
-import { mockDocuments } from '../data/mockData';
+
 
 interface DocumentsViewProps {
   setActiveTab: (tab: any) => void;
@@ -29,10 +29,9 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isBackend, setIsBackend] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/v1/documents')
+    fetch('http://127.0.0.1:8000/api/v1/documents')
       .then((res) => {
         if (!res.ok) throw new Error('API Response Error');
         return res.json();
@@ -73,15 +72,14 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
             };
           });
           setDocuments(mapped);
-          setIsBackend(true);
         } else {
-          setDocuments(mockDocuments);
+          setDocuments([]);
         }
         setLoading(false);
       })
       .catch((err) => {
         console.error('Error fetching documents from backend:', err);
-        setDocuments(mockDocuments);
+        setDocuments([]);
         setLoading(false);
       });
   }, []);

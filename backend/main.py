@@ -18,7 +18,7 @@ from app.models.document import Document, DocumentChunk
 from app.models.industrial import Equipment, Engineer, Incident, MaintenanceRecord, ComplianceRule, ComplianceResult
 
 # Routers
-from app.api import auth, documents, uploads, dashboard, copilot, graph
+from app.api import auth, documents, uploads, dashboard, copilot, graph, incidents
 
 # Setup logging
 logging.basicConfig(
@@ -180,6 +180,7 @@ app.include_router(uploads.router, prefix=settings.API_V1_STR, tags=["Uploads"])
 app.include_router(dashboard.router, prefix=settings.API_V1_STR, tags=["Dashboard"])
 app.include_router(copilot.router, prefix=f"{settings.API_V1_STR}/copilot", tags=["Copilot"])
 app.include_router(graph.router, prefix=f"{settings.API_V1_STR}/graph", tags=["Knowledge Graph"])
+app.include_router(incidents.router, prefix=f"{settings.API_V1_STR}/incidents", tags=["Incidents"])
 
 @app.get("/")
 def read_root():

@@ -11,7 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_EXTENSIONS = {"pdf", "docx", "xlsx", "txt", "png", "jpg", "jpeg"}
+ALLOWED_EXTENSIONS = {"pdf", "docx", "xlsx", "csv", "json", "html", "md", "txt", "png", "jpg", "jpeg"}
 
 class UploadService:
     @staticmethod
