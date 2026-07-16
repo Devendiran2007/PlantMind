@@ -13,6 +13,8 @@ import {
   FileCheck2
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
+import PidDrawingExplorer from '../components/PidDrawingExplorer';
+
 
 
 interface DocumentsViewProps {
@@ -29,9 +31,15 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDrawingDoc, setSelectedDrawingDoc] = useState<any | null>(null);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/v1/documents')
+    const token = localStorage.getItem("plantmind_auth_token");
+    fetch('http://127.0.0.1:8000/api/v1/documents', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
       .then((res) => {
         if (!res.ok) throw new Error('API Response Error');
         return res.json();
@@ -254,7 +262,8 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                     <Cpu className="w-4 h-4" />
                   </button>
                   <button
-                    title="View PDF attachment"
+                    onClick={() => setSelectedDrawingDoc(doc)}
+                    title="View Interactive Drawing"
                     className="p-2 text-text-secondary hover:text-white bg-card hover:bg-card-secondary border border-border/50 rounded-lg transition-all duration-200 cursor-pointer"
                   >
                     <Eye className="w-4 h-4" />
@@ -280,6 +289,13 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
           </div>
         )}
       </div>
+      {selectedDrawingDoc && (
+        <PidDrawingExplorer 
+          doc={selectedDrawingDoc} 
+          onClose={() => setSelectedDrawingDoc(null)} 
+          setActiveTab={setActiveTab} 
+        />
+      )}
     </div>
   );
 };

@@ -138,10 +138,12 @@ export const CopilotView: React.FC = () => {
     setIsThinking(true);
 
     // Call Backend API
+    const token = localStorage.getItem("plantmind_auth_token");
     fetch('http://127.0.0.1:8000/api/v1/copilot/query', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({ query: text })
     })
@@ -213,6 +215,15 @@ export const CopilotView: React.FC = () => {
         }, 1500);
       });
   };
+
+  // Auto-run pending Copilot query stashed in local storage (e.g. from P&ID drawing explorer hotspots)
+  useEffect(() => {
+    const pendingQuery = localStorage.getItem('plantmind_pending_copilot_query');
+    if (pendingQuery) {
+      localStorage.removeItem('plantmind_pending_copilot_query');
+      handleSendMessage(pendingQuery);
+    }
+  }, [activeSessionId]);
 
   const handleSwitchSession = (id: string) => {
     setActiveSessionId(id);

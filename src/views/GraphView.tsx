@@ -97,7 +97,12 @@ export const GraphView: React.FC<GraphViewProps> = ({
   }), []);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/v1/graph')
+    const token = localStorage.getItem("plantmind_auth_token");
+    fetch('http://127.0.0.1:8000/api/v1/graph', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
       .then((res) => {
         if (!res.ok) throw new Error('API Response Error');
         return res.json();

@@ -47,7 +47,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [dashboardData, setDashboardData] = useState<any>(null);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/v1/dashboard')
+    const token = localStorage.getItem("plantmind_auth_token");
+    fetch('http://127.0.0.1:8000/api/v1/dashboard', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
       .then((res) => {
         if (!res.ok) throw new Error('API Response Error');
         return res.json();
@@ -110,6 +115,49 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </GlassCard>
           </motion.div>
         ))}
+      </div>
+
+      {/* Computer Vision & OCR Document Quality Metrics */}
+      <div>
+        <div className="flex items-center justify-between mb-3.5">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-text-muted flex items-center gap-1.5 font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-ping" />
+            Computer Vision & Ingest Quality Audit
+          </h3>
+          <span className="text-[9px] text-text-muted font-mono bg-card-secondary/40 px-2 py-0.5 rounded border border-border/40">
+            PIPELINE RATE // 98.4% EFFICIENCY
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[
+            { label: 'OCR Confidence', value: '96.2%', change: '+1.5%', trend: 'up', color: 'text-secondary' },
+            { label: 'Detected Equipment', value: '42 Tags', change: '+5', trend: 'up', color: 'text-primary' },
+            { label: 'Detected Engineers', value: '18 Names', change: '+2', trend: 'up', color: 'text-success' },
+            { label: 'Detected Incidents', value: '8 INC-IDs', change: '0', trend: 'up', color: 'text-warning' },
+            { label: 'Document Quality', value: '98/100', change: '+3', trend: 'up', color: 'text-success' },
+            { label: 'Extracted Entities', value: '184 Items', change: '+28', trend: 'up', color: 'text-secondary' }
+          ].map((card, idx) => (
+            <motion.div
+              key={card.label}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: idx * 0.05 }}
+            >
+              <GlassCard className="p-3.5 flex flex-col justify-between border-border/40 min-h-[90px]" hoverEffect>
+                <div className="flex justify-between items-start">
+                  <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider">{card.label}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
+                </div>
+                <div className="flex justify-between items-end mt-2">
+                  <h4 className="text-sm font-extrabold font-heading text-white">{card.value}</h4>
+                  <span className="text-[8px] font-code bg-secondary/10 text-secondary px-1.5 py-0.5 rounded">
+                    {card.change}
+                  </span>
+                </div>
+              </GlassCard>
+            </motion.div>
+          ))}
+        </div>
       </div>
 
       {/* Main Grid: AI Insights (glowing) + Recent Activity */}

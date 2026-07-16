@@ -13,8 +13,10 @@ import GraphView from './views/GraphView';
 import RcaView from './views/RcaView';
 import ComplianceView from './views/ComplianceView';
 import SettingsView from './views/SettingsView';
+import LoginView from './views/LoginView';
 
 function App() {
+  const [token, setToken] = useState<string | null>(localStorage.getItem("plantmind_auth_token"));
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -36,7 +38,7 @@ function App() {
       case 'documents':
         return <DocumentsView setActiveTab={setActiveTab} searchTerm={searchTerm} />;
       case 'uploads':
-        return <UploadView />;
+        return <UploadView setActiveTab={setActiveTab} />;
       case 'graph':
         return <GraphView setActiveTab={setActiveTab} openRcaWithId={openRcaWithId} />;
       case 'rca':
@@ -55,6 +57,10 @@ function App() {
     }
   };
 
+  if (!token) {
+    return <LoginView setToken={setToken} />;
+  }
+
   return (
     <div className="flex min-h-screen bg-background text-white blueprint-grid font-body overflow-x-hidden">
       {/* Navigation Sidebar */}
@@ -63,6 +69,7 @@ function App() {
         setActiveTab={setActiveTab} 
         collapsed={collapsed} 
         setCollapsed={setCollapsed} 
+        setToken={setToken}
       />
 
       {/* Main Workspace Frame */}

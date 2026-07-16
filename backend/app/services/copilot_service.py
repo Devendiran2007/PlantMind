@@ -26,6 +26,7 @@ class CopilotService:
         rag_chunks = []
         sources = []
         similarity_score = 0.0
+        matched_doc_ids = []
         
         from app.services.rag_service import LANGCHAIN_AVAILABLE
         
@@ -62,38 +63,64 @@ class CopilotService:
             words = cleaned_query.split()
             stopwords = {"tell", "about", "what", "where", "when", "some", "that", "this", "they", "them", "then", "with", "from", "have", "here", "your", "only", "also"}
             
-            keywords = []
+            # Step 1: Check if any query word matches a Document ID or Filename in the database
+            matched_doc_ids = []
             for w in words:
-                w_clean = w.strip("?,.!:;()\"'")
-                if not w_clean:
-                    continue
-                w_lower = w_clean.lower()
-                if w_lower in stopwords:
-                    continue
-                if any(c.isdigit() for c in w_clean) or (w_clean.isupper() and len(w_clean) >= 2) or len(w_clean) > 3:
-                    keywords.append(w_clean)
+                w_clean = w.strip("?,.!:;()\"'").lower()
+                if len(w_clean) >= 3 and w_clean not in stopwords:
+                    docs = db.query(Document).filter(
+                        (Document.filename.ilike(f"%{w_clean}%")) | 
+                        (Document.id.ilike(f"%{w_clean}%"))
+                    ).all()
+                    for d in docs:
+                        if d.id not in matched_doc_ids:
+                            matched_doc_ids.append(d.id)
+            
+            if matched_doc_ids:
+                logger.info(f"RAG query matched document IDs directly: {matched_doc_ids}")
+                db_chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(matched_doc_ids)).limit(4).all()
+                if db_chunks:
+                    rag_chunks = [c.content for c in db_chunks]
+                    similarity_score = 0.9
+                    for c in db_chunks:
+                        db_doc = db.query(Document).filter(Document.id == c.document_id).first()
+                        if db_doc and db_doc.filename not in sources:
+                            sources.append(db_doc.filename)
+            
+            # Step 2: Content Keyword fallback if document search yielded no chunks
+            if not rag_chunks:
+                keywords = []
+                for w in words:
+                    w_clean = w.strip("?,.!:;()\"'")
+                    if not w_clean:
+                        continue
+                    w_lower = w_clean.lower()
+                    if w_lower in stopwords:
+                        continue
+                    if any(c.isdigit() for c in w_clean) or (w_clean.isupper() and len(w_clean) >= 2) or len(w_clean) > 3:
+                        keywords.append(w_clean)
+                        
+                if not keywords:
+                    keywords = [w.strip("?,.!:;()\"'") for w in words if len(w.strip("?,.!:;()\"'")) >= 3 and w.lower() not in stopwords]
                     
-            if not keywords:
-                keywords = [w.strip("?,.!:;()\"'") for w in words if len(w.strip("?,.!:;()\"'")) >= 3 and w.lower() not in stopwords]
-                
-            if keywords:
-                from sqlalchemy import and_, or_
-                # Query chunks that match all keywords if possible (AND)
-                query_filters = [DocumentChunk.content.like(f"%{kw}%") for kw in keywords]
-                db_chunks = db.query(DocumentChunk).filter(and_(*query_filters)).limit(3).all()
-                
-                # Fallback to any keyword (OR) if no chunks match all
-                if not db_chunks:
-                    or_filters = [DocumentChunk.content.like(f"%{kw}%") for kw in keywords]
-                    db_chunks = db.query(DocumentChunk).filter(or_(*or_filters)).limit(3).all()
+                if keywords:
+                    from sqlalchemy import and_, or_
+                    # Query chunks that match all keywords if possible (AND)
+                    query_filters = [DocumentChunk.content.like(f"%{kw}%") for kw in keywords]
+                    db_chunks = db.query(DocumentChunk).filter(and_(*query_filters)).limit(3).all()
                     
-                rag_chunks = [c.content for c in db_chunks]
-                similarity_score = 0.75 if db_chunks else 0.0
-                
-                for c in db_chunks:
-                    db_doc = db.query(Document).filter(Document.id == c.document_id).first()
-                    if db_doc and db_doc.filename not in sources:
-                        sources.append(db_doc.filename)
+                    # Fallback to any keyword (OR) if no chunks match all
+                    if not db_chunks:
+                        or_filters = [DocumentChunk.content.like(f"%{kw}%") for kw in keywords]
+                        db_chunks = db.query(DocumentChunk).filter(or_(*or_filters)).limit(3).all()
+                        
+                    rag_chunks = [c.content for c in db_chunks]
+                    similarity_score = 0.75 if db_chunks else 0.0
+                    
+                    for c in db_chunks:
+                        db_doc = db.query(Document).filter(Document.id == c.document_id).first()
+                        if db_doc and db_doc.filename not in sources:
+                            sources.append(db_doc.filename)
 
         # 2. Retrieve Graph Neighbors
         graph_context = []
@@ -153,12 +180,25 @@ class CopilotService:
 {combined_graph_text}"""
 
         # 4. Formulate strict prompt
-        prompt = f"""You are PlantMind AI, an industrial safety and process operations advisor.
-Answer the query using ONLY the provided contexts (Document Text chunks and Knowledge Graph neighbors).
-If the context does not contain enough information to answer the question, respond with exactly: "I couldn't find supporting evidence."
-Do not try to guess, hypothesize, or hallucinate.
+        is_doc_query = any(k in query_text.lower() for k in ["explain", "summarize", "contain", "inside", "content", "what is", "about", "tell me"]) and len(matched_doc_ids) > 0
+        
+        if is_doc_query:
+            response_format = """RESPONSE FORMAT:
+Your response MUST be formatted in Markdown.
+You MUST include these exact headings:
+### Document Overview
+[Provide a high-level summary of the document's purpose, file type, and scope]
 
-RESPONSE FORMAT:
+### Key Sections & Contents
+[Synthesize and list the main sections, observations, hazards, or parameters found in the text context]
+
+### Extracted Entities
+[List physical equipment tags, engineer names, dates, or standards references identified in this document]
+
+### Document Significance
+[Explain how this document relates to other plant systems, hazard controls, or operations]"""
+        else:
+            response_format = """RESPONSE FORMAT:
 Your response MUST be formatted in Markdown.
 You MUST include these exact headings:
 ### Summary
@@ -174,7 +214,14 @@ You MUST include these exact headings:
 [List relevant SOP codes, manual names, or P&ID document references mentioned in the context]
 
 ### Recommended Action
-[Detail immediate mitigations and long-term preventions, assigning them if engineers are mentioned]
+[Detail immediate mitigations and long-term preventions, assigning them if engineers are mentioned]"""
+
+        prompt = f"""You are PlantMind AI, an industrial safety and process operations advisor.
+Answer the query using ONLY the provided contexts (Document Text chunks and Knowledge Graph neighbors).
+If the context does not contain enough information to answer the question, respond with exactly: "I couldn't find supporting evidence."
+Do not try to guess, hypothesize, or hallucinate.
+
+{response_format}
 
 CONTEXT:
 {combined_context}
@@ -185,8 +232,31 @@ QUERY:
 
         # 5. Call LLM
         answer = ""
-        # Try OpenAI
-        if settings.OPENAI_API_KEY and os.getenv("TESTING") != "True":
+        # Try NVIDIA NIM (Moonshot AI Kimi)
+        if settings.NVIDIA_API_KEY and os.getenv("TESTING") != "True":
+            try:
+                url = settings.NVIDIA_API_URL
+                headers = {
+                    "Authorization": f"Bearer {settings.NVIDIA_API_KEY}",
+                    "Accept": "application/json",
+                }
+                payload = {
+                    "messages": [
+                        {"role": "system", "content": "You are a grounded safety advisor."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "model": settings.NVIDIA_MODEL,
+                    "temperature": 0.0,
+                }
+                with httpx.Client(timeout=15.0) as client:
+                    resp = client.post(url, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    answer = resp.json()["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                logger.error(f"NVIDIA NIM completion failed: {e}")
+
+        # Try OpenAI fallback
+        if not answer and settings.OPENAI_API_KEY and os.getenv("TESTING") != "True":
             try:
                 url = "https://api.openai.com/v1/chat/completions"
                 headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
@@ -312,18 +382,39 @@ Boiler Unit 3 experienced a thermal load excursion on 2026-07-12, triggered by a
                         
                     recs = recommendations if recommendations else "Review manual guidelines and carry out general safety inspections."
                     
-                    answer = f"""### Summary
-{summary}
+                    if is_doc_query:
+                        db_doc = db.query(Document).filter(Document.id == matched_doc_ids[0]).first()
+                        ent_equip = db_doc.entities.get("equipment_ids", []) if db_doc and db_doc.entities else []
+                        ent_eng = db_doc.entities.get("engineer_names", []) if db_doc and db_doc.entities else []
+                        
+                        answer = f"""### Document Overview
+This document represents an ingested file '{db_doc.filename if db_doc else title}' of type '{db_doc.type if db_doc else "docx"}' uploaded to the PlantMind Ingestion Center.
+Scope and purpose: {observations[:250]}...
 
+### Key Sections & Contents
+- **Technical Observations**: {observations[:300]}...
+- **Work Instructions**: {engineering_notes[:300] if engineering_notes else "General operational guidelines."}
+- **Recommended Remediation Actions**: {recs[:300]}
+
+### Extracted Entities
+- **Equipment tags identified**: {", ".join(ent_equip) if ent_equip else "None identified"}
+- **Engineers/Operator profiles matched**: {", ".join(ent_eng[:5]) if ent_eng else "None identified"}
+
+### Document Significance
+This record has been fully integrated into the PlantMind Knowledge Graph and vector store index, allowing reliability engineers to run semantic RAG operations and trace cross-component risks."""
+                    else:
+                        answer = f"""### Summary
+{summary}
+ 
 ### Evidence
 {evidence}
-
+ 
 ### Historical Similar Incidents
 - No similar incident history is recorded directly in the context of this log.
-
+ 
 ### Related Documents
 - {sources[0] if sources else "System database log"}
-
+ 
 ### Recommended Action
 {recs}
 """

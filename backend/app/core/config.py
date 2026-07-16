@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # API Keys
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    NVIDIA_API_KEY: str = ""
+    NVIDIA_API_URL: str = "https://integrate.api.nvidia.com/v1/chat/completions"
+    NVIDIA_MODEL: str = "moonshotai/kimi-k2.6"
 
     class Config:
         env_file = ".env"

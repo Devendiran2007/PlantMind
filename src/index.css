@@ -1,21 +1,25 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  html {
+    font-size: 18px; /* Globally scales all typography to be larger and highly legible */
+  }
+  
   body {
     @apply bg-background text-text font-body antialiased selection:bg-primary/30 selection:text-white overflow-x-hidden;
     background-image: 
-      radial-gradient(at 0% 0%, rgba(249, 115, 22, 0.04) 0px, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(0, 229, 255, 0.04) 0px, transparent 50%),
-      radial-gradient(at 50% 50%, rgba(21, 27, 35, 0.4) 0px, transparent 100%);
+      radial-gradient(at 0% 0%, rgba(249, 115, 22, 0.05) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(0, 229, 255, 0.05) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, rgba(11, 15, 20, 0.6) 0px, transparent 100%);
     background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-heading tracking-wide;
+    @apply font-heading tracking-wide font-bold;
   }
 
   code, pre {
@@ -25,17 +29,18 @@
 
 /* Custom Scrollbar for Industrial UI */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0B0F14;
+  background: #06090d;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2B3647;
-  border-radius: 3px;
+  background: #1e293b;
+  border-radius: 4px;
+  border: 2px solid #06090d;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -44,30 +49,30 @@
 
 /* Glassmorphism Styles */
 .glass-panel {
-  background: rgba(21, 27, 35, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(43, 54, 71, 0.5);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  background: rgba(13, 18, 25, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 229, 255, 0.15);
+  box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.6);
 }
 
 .glass-panel-heavy {
-  background: rgba(11, 15, 20, 0.9);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(43, 54, 71, 0.8);
-  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.8);
+  background: rgba(8, 12, 17, 0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(249, 115, 22, 0.25);
+  box-shadow: 0 15px 50px 0 rgba(0, 0, 0, 0.85);
 }
 
 /* Animated Border Glow */
 @keyframes borderGlow {
   0%, 100% {
-    border-color: rgba(43, 54, 71, 0.5);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+    border-color: rgba(43, 54, 71, 0.6);
+    box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.6);
   }
   50% {
-    border-color: rgba(249, 115, 22, 0.4);
-    box-shadow: 0 8px 32px 0 rgba(249, 115, 22, 0.08);
+    border-color: rgba(249, 115, 22, 0.5);
+    box-shadow: 0 10px 40px 0 rgba(249, 115, 22, 0.12);
   }
 }
 
@@ -77,12 +82,12 @@
 
 @keyframes borderGlowCyan {
   0%, 100% {
-    border-color: rgba(43, 54, 71, 0.5);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+    border-color: rgba(43, 54, 71, 0.6);
+    box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.6);
   }
   50% {
-    border-color: rgba(0, 229, 255, 0.4);
-    box-shadow: 0 8px 32px 0 rgba(0, 229, 255, 0.08);
+    border-color: rgba(0, 229, 255, 0.5);
+    box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 229, 255, 0.15);
   }
 }
 
@@ -92,10 +97,10 @@
 
 /* Grid overlay background to simulate industrial blueprint/CAD style */
 .blueprint-grid {
-  background-size: 32px 32px;
+  background-size: 40px 40px;
   background-image: 
-    linear-gradient(to right, rgba(43, 54, 71, 0.07) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(43, 54, 71, 0.07) 1px, transparent 1px);
+    linear-gradient(to right, rgba(0, 229, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 229, 255, 0.04) 1px, transparent 1px);
 }
 
 /* Custom React Flow overrides for Dark theme compatibility */
@@ -113,3 +118,13 @@
 .react-flow__attribution {
   display: none !important;
 }
+
+/* Cybernetic Glowing Text and HUD components */
+.hud-glow {
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
+}
+
+.hud-glow-orange {
+  text-shadow: 0 0 8px rgba(249, 115, 22, 0.5);
+}
+

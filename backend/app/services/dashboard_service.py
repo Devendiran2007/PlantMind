@@ -117,18 +117,85 @@ class DashboardService:
                 {"time": "24:00", "load": 87, "oee": 84}
             ]
 
-            plant_status = {
-                "status": "Normal",
+            # Dynamic AI-powered plant status evaluation
+            active_incident = db.query(Incident).filter(Incident.status != "resolved").order_by(Incident.date.desc()).first()
+            
+            # Initialize defaults
+            status_data = {
+                "status": "Normal Operations",
                 "indicator": "🟢",
-                "equipment": "P-101",
-                "risk": "Medium",
-                "root_cause": "Bearing Wear",
-                "supporting_evidence": "4 Documents",
-                "historical_incidents": "2 Similar Cases",
-                "compliance": "1 Missing SOP",
-                "recommended_action": "Replace Bearing",
-                "estimated_downtime": "2 Hours",
-                "confidence": "94%"
+                "risk": "Minimal",
+                "root_cause": "None",
+                "recommended_action": "Routine diagnostics scan",
+                "estimated_downtime": "0 Hours",
+                "confidence": "99%"
+            }
+            
+            if active_incident:
+                status_data = {
+                    "status": "Anomaly Detected",
+                    "indicator": "🔴",
+                    "risk": active_incident.severity.capitalize(),
+                    "root_cause": active_incident.title[:30] + "...",
+                    "recommended_action": "Execute RCA Triage",
+                    "estimated_downtime": "2 Hours",
+                    "confidence": "94%"
+                }
+                
+                # Query Gemini to summarize the anomaly details if key exists
+                from app.core.config import settings
+                import json
+                import httpx
+                
+                gemini_key = settings.GEMINI_API_KEY
+                if gemini_key:
+                    try:
+                        prompt = f"""You are PlantMind AI. Analyze the following active industrial incident:
+Incident ID: {active_incident.id}
+Title: {active_incident.title}
+Severity: {active_incident.severity}
+Equipment ID: {active_incident.equipment_id}
+Details: {active_incident.details}
+
+Provide a JSON response with these exact keys:
+{{
+  "status": "Anomaly Detected" or "Warning" (short string),
+  "indicator": "🔴" or "🟡" (one emoji),
+  "risk": "High" or "Critical" or "Medium" (short string),
+  "root_cause": "brief explanation under 5 words",
+  "recommended_action": "brief step under 6 words",
+  "estimated_downtime": "X Hours" or "X Days",
+  "confidence": "XX%"
+}}
+Do not output any markdown formatting, only valid JSON.
+"""
+                        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+                        payload = {
+                            "contents": [{"parts": [{"text": prompt}]}],
+                            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.1}
+                        }
+                        with httpx.Client(timeout=8.0) as client:
+                            resp = client.post(url, json=payload)
+                        if resp.status_code == 200:
+                            parsed = json.loads(resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip())
+                            for k in status_data.keys():
+                                if k in parsed:
+                                    status_data[k] = parsed[k]
+                    except Exception as e:
+                        logger.warning(f"Failed to query Gemini for dashboard status card: {e}")
+
+            plant_status = {
+                "status": status_data["status"],
+                "indicator": status_data["indicator"],
+                "equipment": active_incident.equipment_id if active_incident else "All assets clear",
+                "risk": status_data["risk"],
+                "root_cause": status_data["root_cause"],
+                "supporting_evidence": f"{len(documents)} Documents",
+                "historical_incidents": f"{len(incidents)} Similar Cases",
+                "compliance": f"{compliance_gaps} Missing SOPs",
+                "recommended_action": status_data["recommended_action"],
+                "estimated_downtime": status_data["estimated_downtime"],
+                "confidence": status_data["confidence"]
             }
 
             return DashboardResponse(

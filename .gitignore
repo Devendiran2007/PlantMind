@@ -41,3 +41,8 @@ backend/vectorstore/
 # PlantMind Dataset Generator Output
 PlantMind-Dataset-Generator/output/
 
+# Processed documents cache
+processed/
+backend/processed/
+
+

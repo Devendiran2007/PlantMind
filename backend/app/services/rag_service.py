@@ -236,10 +236,33 @@ QUERY:
 {query_text}
 """
         
-        # 5. Call LLM (Gemini or OpenAI)
+        # 5. Call LLM (NVIDIA, OpenAI, or Gemini)
         answer = ""
-        # Try OpenAI if API key present
-        if settings.OPENAI_API_KEY and os.getenv("TESTING") != "True":
+        # Try NVIDIA NIM (Moonshot AI Kimi)
+        if settings.NVIDIA_API_KEY and os.getenv("TESTING") != "True":
+            try:
+                url = settings.NVIDIA_API_URL
+                headers = {
+                    "Authorization": f"Bearer {settings.NVIDIA_API_KEY}",
+                    "Accept": "application/json",
+                }
+                payload = {
+                    "messages": [
+                        {"role": "system", "content": "You are a grounded safety advisor."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "model": settings.NVIDIA_MODEL,
+                    "temperature": 0.0,
+                }
+                with httpx.Client(timeout=15.0) as client:
+                    resp = client.post(url, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    answer = resp.json()["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                logger.error(f"NVIDIA NIM RAG completion call failed: {e}")
+
+        # Try OpenAI fallback if API key present
+        if not answer and settings.OPENAI_API_KEY and os.getenv("TESTING") != "True":
             try:
                 # Call OpenAI chat completion
                 url = "https://api.openai.com/v1/chat/completions"
