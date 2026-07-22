@@ -91,6 +91,10 @@ def main():
     
     print(f"Filtered prototype dataset: {len(assets)} assets, {len(employees)} employees, and {len(documents)} documents.")
     
+    # Initialize database schemas if they don't exist yet
+    print("\nInitializing database schemas...")
+    Base.metadata.create_all(bind=engine)
+    
     # Establish DB session
     db = SessionLocal()
     
